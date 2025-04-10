@@ -1,0 +1,5 @@
+train: /images/train
+val: /images/val
+
+nc: 3  # number of classes (for your case, 3 for food items or medical items)
+names: ['sandwich', 'hotdog', 'burger']  # change accordingly for your classes
