@@ -1,0 +1,5 @@
+train: /Users/tedgoh/Grp6_IDC2025/ml/dataset/images/train
+val: /Users/tedgoh/Grp6_IDC2025/ml/dataset/images/val
+
+nc: 1  # number of classes (for your case, 3 for food items or medical items)
+names: ['burger']  # change accordingly for your classes

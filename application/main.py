@@ -1,152 +1,125 @@
 #!/usr/bin/env python3
 import cv2
-import numpy as np
+import torch
 import serial
 import time
-import ncnn
+from torchvision import transforms  # (if you need additional image preprocessing)
 
 # ---------------------------
-# Setup Serial Communication
+# Serial (PySerial) Setup
 # ---------------------------
+# Adjust the serial port as appropriate (e.g., '/dev/ttyUSB0' or '/dev/ttyACM0')
 try:
     ser = serial.Serial('/dev/ttyUSB0', baudrate=9600, timeout=1)
-    time.sleep(2)
-    print("Serial port initialized.")
+    time.sleep(2)  # Allow time for connection to be established
+    print("Serial connection established.")
 except Exception as e:
-    print("Error initializing serial:", e)
+    print("Error initializing serial communication:", e)
     ser = None
 
-def send_serial_command(cmd):
+def send_serial_command(command):
+    """
+    Send a command (string) over serial to the Arduino.
+    """
     if ser:
         try:
-            ser.write(cmd.encode())
-            print("Sent command:", cmd)
+            ser.write(command.encode())
+            print("Sent command:", command)
         except Exception as e:
-            print("Error sending serial command:", e)
+            print("Failed to send command:", e)
     else:
-        print("Serial not available. Command not sent.")
+        print("Serial port not initialized; cannot send command.")
 
-# ---------------------------------------------------------
-# Load ncnn Models for Food and Medical Object Detection
-# ---------------------------------------------------------
-# Update these file paths to the location where you saved your converted models.
-# Each model requires a .param and .bin file.
-food_param_path = "path/to/food_yolov5.param"
-food_bin_path   = "path/to/food_yolov5.bin"
+# ----------------------------------
+# Load YOLO models using Torch Hub
+# ----------------------------------
+# The following uses the ultralytics/yolov5 repository. Ensure your custom models
+# are located at the provided paths. You can also convert your models to ncnn later for performance.
+#
+# Example: If you trained your food detector with three classes (sandwich, hotdog, burger)
+# and saved it as "food_model.pt", update the path accordingly.
+# Similarly, update "medical_model.pt" for the medical items model.
 
-medical_param_path = "path/to/medical_yolov5.param"
-medical_bin_path   = "path/to/medical_yolov5.bin"
+food_model_path = "path/to/food_model.pt"      # Replace with your actual model path
+medical_model_path = "path/to/medical_model.pt"  # Replace with your actual model path
 
-# Initialize the ncnn network for food objects
-food_net = ncnn.Net()
-ret = food_net.load_param(food_param_path)
-if ret != 0:
-    print("Failed to load food model param:", ret)
-ret = food_net.load_model(food_bin_path)
-if ret != 0:
-    print("Failed to load food model bin:", ret)
-print("Food model loaded via ncnn.")
+print("Loading food model...")
+food_model = torch.hub.load('ultralytics/yolov5', 'custom', path=food_model_path, force_reload=True)
+print("Food model loaded.")
 
-# Initialize the ncnn network for medical objects
-medical_net = ncnn.Net()
-ret = medical_net.load_param(medical_param_path)
-if ret != 0:
-    print("Failed to load medical model param:", ret)
-ret = medical_net.load_model(medical_bin_path)
-if ret != 0:
-    print("Failed to load medical model bin:", ret)
-print("Medical model loaded via ncnn.")
+print("Loading medical model...")
+medical_model = torch.hub.load('ultralytics/yolov5', 'custom', path=medical_model_path, force_reload=True)
+print("Medical model loaded.")
 
-# ----------------------------
-# Preprocessing Function
-# ----------------------------
-def letterbox(image, target_size=640):
-    height, width = image.shape[:2]
-    scale = target_size / max(width, height)
-    new_w, new_h = int(width * scale), int(height * scale)
-    resized = cv2.resize(image, (new_w, new_h))
-    top = (target_size - new_h) // 2
-    bottom = target_size - new_h - top
-    left = (target_size - new_w) // 2
-    right = target_size - new_w - left
-    padded = cv2.copyMakeBorder(resized, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114))
-    return padded, scale, left, top
+# -------------------------------------------------
+# Detection functions for food and medical items
+# -------------------------------------------------
 
-# -------------------------------
-# Generic ncnn Detection Function
-# -------------------------------
-def detect_with_ncnn(net, image, target_size=640):
-    # Preprocess image: letterbox resize
-    processed, scale, pad_x, pad_y = letterbox(image, target_size=target_size)
+def detect_food(frame):
+    """
+    Detect food objects in the frame.
+    Assumes:
+      - Class 0: sandwich
+      - Class 1: hotdog
+      - Class 2: burger
+    Returns a dictionary with counts for each food item.
+    """
+    # Run inference
+    results = food_model(frame)
+    # results.xyxy[0] contains detections (x1, y1, x2, y2, confidence, class)
+    detections = results.xyxy[0]
     
-    # Convert processed image to ncnn Mat (assumes image is in BGR format)
-    in_mat = ncnn.Mat.from_pixels(processed, ncnn.Mat.PIXEL_BGR, processed.shape[1], processed.shape[0])
+    # Initialize counters
+    food_counts = {"sandwich": 0, "hotdog": 0, "burger": 0}
     
-    # Create an extractor for inference
-    ex = net.create_extractor()
-    ex.set_light_mode(True)
+    for *box, conf, cls in detections:
+        class_index = int(cls.item())
+        if class_index == 0:
+            food_counts["sandwich"] += 1
+        elif class_index == 1:
+            food_counts["hotdog"] += 1
+        elif class_index == 2:
+            food_counts["burger"] += 1
+
+    return food_counts
+
+def detect_medical(frame):
+    """
+    Detect and count medical items in the frame.
+    Assumes:
+      - Class 0: gauze
+      - Class 1: antiseptic cream
+      - Class 2: bandage
+    Returns a dictionary with counts for each medical item.
+    """
+    results = medical_model(frame)
+    detections = results.xyxy[0]
     
-    # 'data' is typically the input blob name; adjust if your model expects a different name.
-    ex.input("data", in_mat)
+    # Initialize counters
+    medical_counts = {"gauze": 0, "antiseptic": 0, "bandage": 0}
     
-    # Extract the output blob; the name "output" is a common default but may differ
-    ret, out = ex.extract("output")
-    if ret != 0:
-        print("Error during inference, ret =", ret)
-        return [], scale, pad_x, pad_y
+    for *box, conf, cls in detections:
+        class_index = int(cls.item())
+        if class_index == 0:
+            medical_counts["gauze"] += 1
+        elif class_index == 1:
+            medical_counts["antiseptic"] += 1
+        elif class_index == 2:
+            medical_counts["bandage"] += 1
 
-    # Convert the output to a NumPy array for further processing.
-    # NOTE: The exact parsing depends on how your YOLO model output is structured.
-    # Here we assume each detection consists of 6 values: [x, y, w, h, confidence, class]
-    output_size = out.w  # for example, or use out.total() if available
-    # For demonstration, assume out is a flat buffer of float32 values:
-    detections = np.array(out).reshape(-1, 6)
-    return detections, scale, pad_x, pad_y
+    return medical_counts
 
-# ------------------------------------------
-# Detection Functions for Specific Tasks
-# ------------------------------------------
-def detect_food_ncnn(frame):
-    detections, scale, pad_x, pad_y = detect_with_ncnn(food_net, frame)
-    # Initialize counts for food items (assumed: 0=sandwich, 1=hotdog, 2=burger)
-    counts = {"sandwich": 0, "hotdog": 0, "burger": 0}
-    for det in detections:
-        x, y, w, h, conf, cls = det
-        if conf > 0.5:  # confidence threshold
-            if int(cls) == 0:
-                counts["sandwich"] += 1
-            elif int(cls) == 1:
-                counts["hotdog"] += 1
-            elif int(cls) == 2:
-                counts["burger"] += 1
-    return counts
-
-def detect_medical_ncnn(frame):
-    detections, scale, pad_x, pad_y = detect_with_ncnn(medical_net, frame)
-    # Initialize counts for medical items (assumed: 0=gauze, 1=antiseptic, 2=bandage)
-    counts = {"gauze": 0, "antiseptic": 0, "bandage": 0}
-    for det in detections:
-        x, y, w, h, conf, cls = det
-        if conf > 0.5:
-            if int(cls) == 0:
-                counts["gauze"] += 1
-            elif int(cls) == 1:
-                counts["antiseptic"] += 1
-            elif int(cls) == 2:
-                counts["bandage"] += 1
-    return counts
-
-# -----------------------
-# Main Loop for Inference
-# -----------------------
+# ------------------------------------
+# Main Loop: Capture and Process Frames
+# ------------------------------------
 def main():
+    # Open the default camera (or provide an alternative video source)
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
-        print("Could not open camera")
+        print("Error: Could not open camera.")
         return
 
-    print("Starting main loop with ncnn inference.")
-    print("Press 'f' for food detection, 'm' for medical detection, 'q' to exit.")
+    print("Starting main loop. Press 'f' for food detection, 'm' for medical detection, 'q' to quit.")
 
     while True:
         ret, frame = cap.read()
@@ -154,25 +127,36 @@ def main():
             print("Failed to grab frame.")
             break
 
+        # Optionally, resize or preprocess the frame here if required
+        # frame = cv2.resize(frame, (640, 480))
+        
         cv2.imshow("Frame", frame)
         key = cv2.waitKey(1) & 0xFF
 
+        # Use key presses to trigger different detection tasks:
         if key == ord('f'):
-            food_results = detect_food_ncnn(frame)
+            # Perform food object detection
+            food_results = detect_food(frame)
             print("Food detection results:", food_results)
+            # Example: send a command based on detected food (modify as needed)
             if food_results["sandwich"] > 0:
                 send_serial_command("sandwich")
             elif food_results["hotdog"] > 0:
                 send_serial_command("hotdog")
             elif food_results["burger"] > 0:
                 send_serial_command("burger")
+                
         elif key == ord('m'):
-            medical_results = detect_medical_ncnn(frame)
+            # Perform medical item detection and count
+            medical_results = detect_medical(frame)
             print("Medical detection results:", medical_results)
+            # Example: if any count is below a threshold (e.g., less than 3), send an alert
             for item, count in medical_results.items():
                 if count < 3:
                     send_serial_command(f"low_{item}")
+                
         elif key == ord('q'):
+            print("Exiting loop.")
             break
 
     cap.release()
