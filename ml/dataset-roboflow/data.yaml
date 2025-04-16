@@ -1,0 +1,13 @@
+train: /Users/tedgoh/Grp6_IDC2025/ml/dataset-roboflow/train/images
+val: /Users/tedgoh/Grp6_IDC2025/ml/dataset-roboflow/valid/images
+test: /Users/tedgoh/Grp6_IDC2025/ml/dataset-roboflow/test/images
+
+nc: 1
+names: ["burger"]
+
+roboflow:
+  workspace: idc25grp6
+  project: task-1-wj8rj
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/idc25grp6/task-1-wj8rj/dataset/1
