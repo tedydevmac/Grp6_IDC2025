@@ -4,8 +4,8 @@ import ncnn
 
 # Initialize the NCNN Net
 net = ncnn.Net()
-net.load_param("/Users/tedgoh/Grp6_IDC2025/ml/models/best2.ncnn.param")  # Update with the path to your .param file
-net.load_model("/Users/tedgoh/Grp6_IDC2025/ml/models/best2.ncnn.bin")   # Update with the path to your .bin file
+net.load_param("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best2.ncnn.param")  # Update with the path to your .param file
+net.load_model("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best2.ncnn.bin")   # Update with the path to your .bin file
 
 # Define the input size expected by the YOLOv8 model
 input_size = 640  # Update this if your model uses a different input size
