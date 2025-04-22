@@ -6,7 +6,7 @@ from ultralytics import YOLO
 # Load your trained YOLOv8 model
 # ---------------------------
 # Replace 'path/to/your_model.pt' with the actual path to your trained model file.
-model = YOLO("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best2.pt")
+model = YOLO("/Users/tedgoh/Grp6_IDC2025/ml/models/best4.pt")
 print("YOLOv8 model loaded successfully.")
 
 # ---------------------------
@@ -29,7 +29,7 @@ while True:
         break
 
     # Run inference on the current frame with a confidence threshold of 0.5 (adjust as needed)
-    results = model.predict(frame, conf=0.9)
+    results = model.predict(frame, conf=0.6)
     
     # The YOLOv8 results have a built-in plot function that returns an annotated frame.
     # Here we use the first result (assuming one frame per inference).
