@@ -6,13 +6,13 @@ from ultralytics import YOLO
 # Load your trained YOLOv8 model
 # ---------------------------
 # Replace 'path/to/your_model.pt' with the actual path to your trained model file.
-model = YOLO("/Users/tedgoh/Grp6_IDC2025/ml/yolov5/runs/train/exp12/weights/best.pt")
+model = YOLO("/Users/tedgoh/Grp6_IDC2025/ml/models/best3.pt")
 print("YOLOv8 model loaded successfully.")
 
 # ---------------------------
 # Initialize the camera
 # ---------------------------
-cap = cv2.VideoCapture(2)  # 0 is typically the default camera for a laptop
+cap = cv2.VideoCapture(0)  # 0 is typically the default camera for a laptop
 if not cap.isOpened():
     print("Error: Could not open camera.")
     exit()
@@ -29,7 +29,7 @@ while True:
         break
 
     # Run inference on the current frame with a confidence threshold of 0.5 (adjust as needed)
-    results = model.predict(frame, conf=0.8)
+    results = model.predict(frame, conf=0.51)
     
     # The YOLOv8 results have a built-in plot function that returns an annotated frame.
     # Here we use the first result (assuming one frame per inference).
