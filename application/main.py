@@ -26,73 +26,72 @@ def send_serial_command(command: str):
         print("Serial port not available. Cannot send command.")
 
 # ---------------------------
-# Load YOLOv8 Models
+# Load YOLOv8 Model
 # ---------------------------
-# Replace these paths with the locations of your trained YOLOv8 models.
-food_model_path = "path/to/food_model.pt"      # Model for food items (sandwich, hotdog, burger)
-medical_model_path = "path/to/medical_model.pt"  # Model for medical items (gauze, antiseptic, bandage)
+# Replace this path with the location of your trained YOLOv8 model.
+model_path = "path/to/single_model.pt"  # Path to the single YOLOv8 model
 
-print("Loading YOLOv8 food model...")
-food_model = YOLO(food_model_path)
-print("Food model loaded.")
-
-print("Loading YOLOv8 medical model...")
-medical_model = YOLO(medical_model_path)
-print("Medical model loaded.")
+print("Loading YOLOv8 model...")
+model = YOLO(model_path)
+print("Model loaded.")
 
 # ---------------------------
 # Detection Functions
 # ---------------------------
-def detect_food(frame):
+def detect_items(frame, item_classes):
     """
-    Detect food objects in the frame using YOLOv8.
-    Assumes:
-      - Class 0: sandwich
-      - Class 1: hotdog
-      - Class 2: burger
-    Returns a dictionary with counts for each food item.
+    Detect and count items in the frame using YOLOv8.
+    Filters out duplicate detections of the same object.
+    item_classes: A dictionary mapping class indices to item names.
+    Returns a dictionary with counts for each item.
     """
-    results = food_model.predict(frame, conf=0.5)  # adjust confidence threshold as needed
-    food_counts = {"sandwich": 0, "hotdog": 0, "burger": 0}
-    
-    # The results object can include one or more prediction sets.
-    # Here we assume results[0] gives detections for the frame.
+    results = model.predict(frame, conf=0.5)  # Adjust confidence threshold as needed
+    item_counts = {item: 0 for item in item_classes.values()}
+
+    detected_boxes = []  # Store processed bounding boxes to avoid duplicates
+
     for result in results:
         for box in result.boxes:
             cls = int(box.cls.cpu().numpy()[0])
-            # Update counts based on class index
-            if cls == 0:
-                food_counts["sandwich"] += 1
-            elif cls == 1:
-                food_counts["hotdog"] += 1
-            elif cls == 2:
-                food_counts["burger"] += 1
+            if cls in item_classes:
+                # Get bounding box coordinates
+                x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
+                box_area = (x2 - x1) * (y2 - y1)
 
-    return food_counts
+                # Check for duplicate detections
+                is_duplicate = False
+                for existing_box in detected_boxes:
+                    iou = calculate_iou((x1, y1, x2, y2), existing_box)
+                    if iou > 0.5:  # IoU threshold for duplicate detection
+                        is_duplicate = True
+                        break
 
-def detect_medical(frame):
+                if not is_duplicate:
+                    detected_boxes.append((x1, y1, x2, y2))
+                    item_counts[item_classes[cls]] += 1
+
+    return item_counts
+
+def calculate_iou(box1, box2):
     """
-    Detect and count medical items in the frame using YOLOv8.
-    Assumes:
-      - Class 0: gauze
-      - Class 1: antiseptic
-      - Class 2: bandage
-    Returns a dictionary with counts for each medical item.
+    Calculate Intersection over Union (IoU) between two bounding boxes.
+    box1, box2: Tuples of (x1, y1, x2, y2).
+    Returns IoU value.
     """
-    results = medical_model.predict(frame, conf=0.5)  # adjust confidence threshold as needed
-    medical_counts = {"gauze": 0, "antiseptic": 0, "bandage": 0}
-    
-    for result in results:
-        for box in result.boxes:
-            cls = int(box.cls.cpu().numpy()[0])
-            if cls == 0:
-                medical_counts["gauze"] += 1
-            elif cls == 1:
-                medical_counts["antiseptic"] += 1
-            elif cls == 2:
-                medical_counts["bandage"] += 1
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
 
-    return medical_counts
+    # Calculate intersection area
+    intersection = max(0, x2 - x1) * max(0, y2 - y1)
+
+    # Calculate union area
+    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
+    union = box1_area + box2_area - intersection
+
+    return intersection / union if union > 0 else 0
 
 # ---------------------------
 # Main Loop: Capture and Process Frames
@@ -105,6 +104,9 @@ def main():
 
     print("Starting video stream. Press 'f' for food detection, 'm' for medical detection, or 'q' to quit.")
 
+    food_classes = {0: "sandwich", 1: "hotdog", 2: "burger"}
+    medical_classes = {0: "gauze", 1: "antiseptic", 2: "bandage"}
+
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -115,24 +117,22 @@ def main():
         key = cv2.waitKey(1) & 0xFF
 
         if key == ord('f'):
-            food_results = detect_food(frame)
+            food_results = detect_items(frame, food_classes)
             print("Food detection results:", food_results)
-            # Example: send a command based on detected food items
             if food_results["sandwich"] > 0:
                 send_serial_command("sandwich")
             elif food_results["hotdog"] > 0:
                 send_serial_command("hotdog")
             elif food_results["burger"] > 0:
                 send_serial_command("burger")
-                
+
         elif key == ord('m'):
-            medical_results = detect_medical(frame)
+            medical_results = detect_items(frame, medical_classes)
             print("Medical detection results:", medical_results)
-            # Send serial command if count of any item is below threshold (e.g., less than 3)
             for item, count in medical_results.items():
                 if count < 3:
                     send_serial_command(f"low_{item}")
-                    
+
         elif key == ord('q'):
             print("Exiting...")
             break

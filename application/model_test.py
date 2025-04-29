@@ -4,14 +4,26 @@ import ncnn
 
 # Initialize the NCNN Net
 net = ncnn.Net()
-net.load_param("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best4.param")  # Update with the path to your .param file
-net.load_model("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best4.bin")   # Update with the path to your .bin file
+
+# Enable Vulkan (GPU Acceleration)
+net.opt.use_vulkan_compute = True  # Use Vulkan for GPU acceleration
+
+# Optimize NCNN Options
+net.opt.use_fp16_packed = True  # Use FP16 packed arithmetic
+net.opt.use_fp16_storage = True  # Use FP16 for storage
+net.opt.use_fp16_arithmetic = True  # Use FP16 arithmetic operations
+net.opt.use_packing_layout = True  # Optimize memory layout for packing
+net.opt.num_threads = 4  # Use 4 threads for parallel processing
+
+# Load the model files
+net.load_param("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best5.ncnn.param")  # Update with the path to your .param file
+net.load_model("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best5.ncnn.bin")   # Update with the path to your .bin file
 
 # Define the input size expected by the YOLOv8 model
 input_size = 640  # Update this if your model uses a different input size
 
 # Define a helper function for preprocessing the frame
-def preprocess(frame, input_ssize):
+def preprocess(frame, input_size):
     h, w, c = frame.shape
     scale = min(input_size / w, input_size / h)
     resized_w = int(w * scale)
@@ -54,10 +66,18 @@ def main():
         print("Error: Could not open camera.")
         return
 
+    frame_skip = 2  # Process every 2nd frame
+    frame_count = 0  # Counter for frame skipping
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
+        
+        # Frame skipping logic
+        frame_count += 1
+        if frame_count % frame_skip != 0:
+            continue
         
         # Preprocess the frame
         input_frame, scale, resized_w, resized_h = preprocess(frame, input_size)
@@ -67,8 +87,8 @@ def main():
         
         # Inference
         ex = net.create_extractor()
-        ex.input("images", ncnn_mat)
-        ret, out = ex.extract("output0")  # Update "data" and "output" based on your YOLOv8 model's input & output names
+        ex.input("in0", ncnn_mat)
+        ret, out = ex.extract("out0")  # Update "images" and "output0" based on your YOLOv8 model's input & output names
         
         # Parse detections
         detections = []
