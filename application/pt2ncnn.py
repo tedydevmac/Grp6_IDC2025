@@ -31,9 +31,9 @@ def convert_pt_to_ncnn(pt_model_path, input_shape, onnx_model_path, ncnn_param_p
 
 if __name__ == "__main__":
     convert_pt_to_ncnn(
-        "/Users/tedgoh/Grp6_IDC2025/ml/models/best2.pt",
+        "/Users/tedgoh/Grp6_IDC2025/ml/models/best4.pt",
         (1, 3, 384, 640),
-        "/Users/tedgoh/Grp6_IDC2025/ml/models/best2.onnx",
-        "/Users/tedgoh/Grp6_IDC2025/ml/models/best2.param",
-        "/Users/tedgoh/Grp6_IDC2025/ml/models/best2.bin"
+        "/Users/tedgoh/Grp6_IDC2025/ml/models/best4.onnx",
+        "/Users/tedgoh/Grp6_IDC2025/ml/models/best4.param",
+        "/Users/tedgoh/Grp6_IDC2025/ml/models/best4.bin"
     )
