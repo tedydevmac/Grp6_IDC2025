@@ -4,14 +4,14 @@ import ncnn
 
 # Initialize the NCNN Net
 net = ncnn.Net()
-net.load_param("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best4.ncnn.param")  # Update with the path to your .param file
-net.load_model("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best4.ncnn.bin")   # Update with the path to your .bin file
+net.load_param("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best4.param")  # Update with the path to your .param file
+net.load_model("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best4.bin")   # Update with the path to your .bin file
 
 # Define the input size expected by the YOLOv8 model
 input_size = 640  # Update this if your model uses a different input size
 
 # Define a helper function for preprocessing the frame
-def preprocess(frame, input_size):
+def preprocess(frame, input_ssize):
     h, w, c = frame.shape
     scale = min(input_size / w, input_size / h)
     resized_w = int(w * scale)
@@ -67,8 +67,8 @@ def main():
         
         # Inference
         ex = net.create_extractor()
-        ex.input("in0", ncnn_mat)
-        ret, out = ex.extract("out0")  # Update "data" and "output" based on your YOLOv8 model's input & output names
+        ex.input("images", ncnn_mat)
+        ret, out = ex.extract("output0")  # Update "data" and "output" based on your YOLOv8 model's input & output names
         
         # Parse detections
         detections = []
