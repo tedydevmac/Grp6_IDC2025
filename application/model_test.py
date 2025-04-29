@@ -16,8 +16,8 @@ net.opt.use_packing_layout = True  # Optimize memory layout for packing
 net.opt.num_threads = 4  # Use 4 threads for parallel processing
 
 # Load the model files
-net.load_param("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best5.ncnn.param")  # Update with the path to your .param file
-net.load_model("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best5.ncnn.bin")   # Update with the path to your .bin file
+net.load_param("/Users/tedgoh/Grp6_IDC2025/ml/models/best5.ncnn.param")  # Update with the path to your .param file
+net.load_model("/Users/tedgoh/Grp6_IDC2025/ml/models/best5.ncnn.bin")   # Update with the path to your .bin file
 
 # Define the input size expected by the YOLOv8 model
 input_size = 640  # Update this if your model uses a different input size
@@ -61,7 +61,7 @@ def draw_bboxes(frame, detections, scale, resized_w, resized_h):
 # Define the main function
 def main():
     # Open the default camera
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(2)
     if not cap.isOpened():
         print("Error: Could not open camera.")
         return
