@@ -57,7 +57,7 @@ def postprocess(output, r, dw, dh, frame_shape):
     return results
 
 # Load model
-session = ort.InferenceSession("bestV11.onnx", providers=["CPUExecutionProvider"])
+session = ort.InferenceSession("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/bestV11_simplified.onnx", providers=["CPUExecutionProvider"])
 input_name = session.get_inputs()[0].name
 
 # Start camera
