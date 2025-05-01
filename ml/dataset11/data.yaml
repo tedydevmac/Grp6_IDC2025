@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 6
+names: ['bandage', 'burger', 'hotdog', 'napkin', 'sandwich', 'syringe']
+
+roboflow:
+  workspace: idc25grp6
+  project: task-1-wj8rj
+  version: 4
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/idc25grp6/task-1-wj8rj/dataset/4
