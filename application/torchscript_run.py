@@ -4,7 +4,7 @@ import onnxruntime as ort
 import time
 
 # Load ONNX model
-session = ort.InferenceSession("/home/sst/IDC25G6/Grp6_IDC2025/ml/models/bestV11.onnx")
+session = ort.InferenceSession("/Users/tedgoh/Grp6_IDC2025/ml/models/bestV11.onnx")
 input_name = session.get_inputs()[0].name
 
 # Model input size (adjust if needed)
