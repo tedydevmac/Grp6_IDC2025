@@ -3,53 +3,87 @@ import numpy as np
 import onnxruntime as ort
 import time
 
-# Load ONNX model
-session = ort.InferenceSession("/Users/tedgoh/Grp6_IDC2025/ml/models/bestV11.onnx")
-input_name = session.get_inputs()[0].name
+CONF_THRESH = 0.4
+INPUT_SIZE = 640  # For YOLOv11n default
 
-# Model input size (adjust if needed)
-INPUT_WIDTH = 640
-INPUT_HEIGHT = 640
+def letterbox(image, new_shape=(640, 640), color=(114, 114, 114)):
+    shape = image.shape[:2]  # [h, w]
+    r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+    new_unpad = (int(round(shape[1] * r)), int(round(shape[0] * r)))
+    dw = (new_shape[1] - new_unpad[0]) / 2
+    dh = (new_shape[0] - new_unpad[1]) / 2
 
-# Confidence threshold
-CONF_THRESH = 0.65
+    resized = cv2.resize(image, new_unpad, interpolation=cv2.INTER_LINEAR)
+    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    padded = cv2.copyMakeBorder(resized, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
 
-# Start video capture
-cap = cv2.VideoCapture(0)  # 0 = default camera
+    return padded, r, dw, dh
 
 def preprocess(frame):
-    img = cv2.resize(frame, (INPUT_WIDTH, INPUT_HEIGHT))
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img, r, dw, dh = letterbox(frame, (INPUT_SIZE, INPUT_SIZE))
     img = img.astype(np.float32) / 255.0
-    img = np.transpose(img, (2, 0, 1))  # HWC -> CHW
-    return np.expand_dims(img, axis=0)  # [1,3,H,W]
+    img = img.transpose(2, 0, 1)
+    img = np.expand_dims(img, axis=0)
+    return img, r, dw, dh
+
+def postprocess(output, r, dw, dh, frame_shape):
+    results = []
+    predictions = output[0][0]  # shape: [num_preds, num_attrs]
+    for det in predictions:
+        x, y, w, h = det[0:4]
+        objectness = det[4]
+        class_scores = det[5:]
+        cls = np.argmax(class_scores)
+        conf = objectness * class_scores[cls]
+
+        if conf < CONF_THRESH:
+            continue
+
+        # Rescale boxes to original image
+        x -= dw
+        y -= dh
+        x /= r
+        y /= r
+        w /= r
+        h /= r
+
+        x1 = int(x - w / 2)
+        y1 = int(y - h / 2)
+        x2 = int(x + w / 2)
+        y2 = int(y + h / 2)
+
+        results.append((x1, y1, x2, y2, conf, cls))
+    return results
+
+# Load model
+session = ort.InferenceSession("bestV11.onnx", providers=["CPUExecutionProvider"])
+input_name = session.get_inputs()[0].name
+
+# Start camera
+cap = cv2.VideoCapture(0)
 
 while True:
+    start_time = time.time()
     ret, frame = cap.read()
     if not ret:
         break
 
-    input_tensor = preprocess(frame)
-
-    # Inference
-    start = time.time()
+    input_tensor, r, dw, dh = preprocess(frame)
     outputs = session.run(None, {input_name: input_tensor})
-    end = time.time()
+    detections = postprocess(outputs, r, dw, dh, frame.shape)
 
-    output = outputs[0]  # Assuming output shape is [num_boxes, 6]
-    for det in output:
-        x1, y1, x2, y2, conf, cls = det
-        if conf > CONF_THRESH:
-            cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0,255,0), 2)
-            cv2.putText(frame, f'{int(cls)}:{conf:.2f}', (int(x1), int(y1) - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+    for x1, y1, x2, y2, conf, cls in detections:
+        label = f"{int(cls)}:{conf:.2f}"
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
 
-    fps = 1 / (end - start)
-    cv2.putText(frame, f'FPS: {fps:.2f}', (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+    end_time = time.time()
+    fps = 1 / (end_time - start_time)
+    cv2.putText(frame, f"FPS: {fps:.2f}", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
 
-    cv2.imshow("YOLO ONNX Inference", frame)
-    if cv2.waitKey(1) == 27:  # ESC to quit
+    cv2.imshow("YOLOv11 Inference", frame)
+    if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
 cap.release()
