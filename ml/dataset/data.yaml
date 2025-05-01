@@ -1,5 +1,13 @@
-train: /Users/tedgoh/Grp6_IDC2025/ml/dataset/images/train
-val: /Users/tedgoh/Grp6_IDC2025/ml/dataset/images/val
+train: ../train/images
+val: ../valid/images
+test: ../test/images
 
-nc: 1  # number of classes (for your case, 3 for food items or medical items)
-names: ['burger']  # change accordingly for your classes
+nc: 3
+names: ['burger', 'hotdog', 'sandwich']
+
+roboflow:
+  workspace: idc25grp6
+  project: task-1-wj8rj
+  version: 3
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/idc25grp6/task-1-wj8rj/dataset/3

@@ -1,0 +1,26 @@
+description: Ultralytics YOLO11n model trained on /content/dataset11/data.yaml
+author: Ultralytics
+date: '2025-05-01T05:26:37.010390'
+version: 8.3.122
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: detect
+batch: 1
+imgsz:
+- 640
+- 640
+names:
+  0: bandage
+  1: burger
+  2: hotdog
+  3: napkin
+  4: sandwich
+  5: syringe
+args:
+  batch: 1
+  fraction: 1.0
+  half: false
+  int8: false
+  nms: false
+channels: 3

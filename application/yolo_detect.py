@@ -101,7 +101,7 @@ elif source_type == 'video' or source_type == 'usb':
 
     if source_type == 'video': cap_arg = img_source
     elif source_type == 'usb': cap_arg = usb_idx
-    cap = cv2.VideoCapture(cap_arg)
+    cap = cv2.VideoCapture(0)
 
     # Set camera or video resolution if specified by user
     if user_res:
@@ -188,7 +188,7 @@ while True:
         conf = detections[i].conf.item()
 
         # Draw box if confidence threshold is high enough
-        if conf > 0.5:
+        if conf > 0.65:
 
             color = bbox_colors[classidx % 10]
             cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
