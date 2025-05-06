@@ -36,6 +36,25 @@ model = YOLO(model_path)
 print("Model loaded.")
 
 # ---------------------------
+# Global Variables for Accumulated Counts
+# ---------------------------
+accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
+
+# ---------------------------
+# Reset Accumulated Counts
+# ---------------------------
+def reset_accumulated_counts():
+    global accumulated_medical_counts
+    accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
+
+# ---------------------------
+# Update Accumulated Counts
+# ---------------------------
+def update_accumulated_counts(detection_results, accumulated_counts):
+    for item, count in detection_results.items():
+        accumulated_counts[item] += count
+
+# ---------------------------
 # Detection Functions
 # ---------------------------
 def detect_items(frame, item_classes):
@@ -94,6 +113,19 @@ def calculate_iou(box1, box2):
     return intersection / union if union > 0 else 0
 
 # ---------------------------
+# Check for Arduino Input
+# ---------------------------
+def check_arduino_input():
+    if (ser and ser.in_waiting > 0):
+        try:
+            input_data = ser.readline().decode('utf-8').strip()
+            print("Received from Arduino:", input_data)
+            return input_data
+        except Exception as e:
+            print("Error reading from Arduino:", e)
+    return None
+
+# ---------------------------
 # Main Loop: Capture and Process Frames
 # ---------------------------
 def main():
@@ -102,10 +134,12 @@ def main():
         print("Error: Could not open camera.")
         return
 
-    print("Starting video stream. Press 'f' for food detection, 'm' for medical detection, or 'q' to quit.")
+    print("Starting video stream. Waiting for Arduino input.")
 
     food_classes = {0: "sandwich", 1: "hotdog", 2: "burger"}
-    medical_classes = {0: "gauze", 1: "antiseptic", 2: "bandage"}
+    medical_classes = {0: "napkin", 1: "syringe", 2: "bandage"}
+
+    detection_mode = None  # Initialize detection mode
 
     while True:
         ret, frame = cap.read()
@@ -114,26 +148,40 @@ def main():
             break
 
         cv2.imshow("Frame", frame)
-        key = cv2.waitKey(1) & 0xFF
 
-        if key == ord('f'):
+        # Check for Arduino input to set detection mode
+        arduino_input = check_arduino_input()
+        if arduino_input == "food":
+            detection_mode = "food"
+            print("Switched to food detection mode.")
+        elif arduino_input == "medical":
+            detection_mode = "medical"
+            print("Switched to medical detection mode.")
+        elif arduino_input == "reset":
+            print("Resetting counts as per Arduino command...")
+            reset_accumulated_counts()
+        elif arduino_input == "stop":
+            print("Stopping program as per Arduino command...")
+            break
+
+        # Perform detection based on the current mode
+        if detection_mode == "food":
             food_results = detect_items(frame, food_classes)
-            print("Food detection results:", food_results)
-            if food_results["sandwich"] > 0:
-                send_serial_command("sandwich")
-            elif food_results["hotdog"] > 0:
-                send_serial_command("hotdog")
-            elif food_results["burger"] > 0:
-                send_serial_command("burger")
+            for item, count in food_results.items():
+                if count > 0:  # If any food item is detected
+                    send_serial_command(f"food_{item}")
+                    print(f"Detected and sent food item: {item}")
 
-        elif key == ord('m'):
+        elif detection_mode == "medical":
             medical_results = detect_items(frame, medical_classes)
-            print("Medical detection results:", medical_results)
-            for item, count in medical_results.items():
-                if count < 3:
-                    send_serial_command(f"low_{item}")
+            update_accumulated_counts(medical_results, accumulated_medical_counts)
+            print("Accumulated medical detection results:", accumulated_medical_counts)
 
-        elif key == ord('q'):
+            # Send medical results via serial
+            for item, count in accumulated_medical_counts.items():
+                send_serial_command(f"medical_{item}:{count}")
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
             print("Exiting...")
             break
 
