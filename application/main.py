@@ -161,8 +161,8 @@ def main():
             print("Resetting counts as per Arduino command...")
             reset_accumulated_counts()
         elif arduino_input == "stop":
-            print("Stopping program as per Arduino command...")
-            break
+            print("Detection functions paused as per Arduino command...")
+            detection_mode = None
 
         # Perform detection based on the current mode
         if detection_mode == "food":
