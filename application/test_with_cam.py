@@ -15,7 +15,7 @@ while True:
         break
 
     # Inference on CPU
-    results = model.predict(frame, imgsz=512, conf=0.75, iou=0.5, device="cpu", show=False)
+    results = model.predict(frame, imgsz=512, conf=0.8, iou=0.5, device="cpu", show=False)
 
     # Draw boxes and labels
     annotated = results[0].plot()  
