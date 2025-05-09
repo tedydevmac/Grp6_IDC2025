@@ -1,78 +1,88 @@
-import threading
-from queue import Queue
-import cv2
-import numpy as np
-from picamera2 import Picamera2
 from ultralytics import YOLO
+import cv2
+import threading
+import time
+from queue import Queue
 
-# Load your model
-model = YOLO("bestV11_3_full_integer_quant.tflite", task="detect")
+# 1. Configuration
+MODEL_PATH = "yolo11n_full_integer_quant.tflite"
+CAMERA_ID = 0
+FRAME_QUEUE_SIZE = 4
+CONFIDENCE_THRESHOLD = 0.25
+IOU_THRESHOLD = 0.45
 
-class CameraStream:
-    def __init__(self, size=(512, 512)):
-        self.picam2 = Picamera2()
-        # Use video config so no PiCamera2 preview windows pop up
-        config = self.picam2.create_video_configuration(
-            main={"size": size}
-        )
-        self.picam2.configure(config)
-        self.queue = Queue(maxsize=1)
-        self.running = False
-        self.thread = threading.Thread(target=self._capture_loop, daemon=True)
+# 2. Load model once
+model = YOLO(MODEL_PATH)
 
-    def start(self):
-        self.picam2.start()
-        self.running = True
-        self.thread.start()
-        return self
+# 3. Queues for frames & results
+frame_queue = Queue(maxsize=FRAME_QUEUE_SIZE)
+result_queue = Queue(maxsize=FRAME_QUEUE_SIZE)
 
-    def _capture_loop(self):
-        while self.running:
-            frame = self.picam2.capture_array()
+def capture_thread():
+    """ Continuously captures frames from camera and pushes into frame_queue. """
+    cap = cv2.VideoCapture(CAMERA_ID)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        # Drop oldest if queue full to keep latest frames
+        if frame_queue.full():
             try:
-                self.queue.put_nowait(frame)  # Automatically discard old frames
-            except Queue.Full:
+                frame_queue.get_nowait()
+            except Queue.Empty:
                 pass
-
-    def read(self):
-        return self.queue.get()
-
-    def stop(self):
-        self.running = False
-        self.thread.join()
-        self.picam2.stop()
-
-# Initialize camera stream
-cam = CameraStream(size=(512, 512)).start()
-
-# Create a single, resizable OpenCV window
-window_name = "YOLOv11n TFLite (512×512)"
-cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-cv2.resizeWindow(window_name, 800, 600)
+        frame_queue.put(frame)
+    cap.release()
 
 def inference_thread():
+    """ Pulls frames from frame_queue, runs inference, and pushes annotated frames to result_queue. """
     while True:
-        frame = cam.read()
-        results = model.predict(
-            source=frame,
-            imgsz=512,
-            conf=0.5,
-            iou=0.5,
-            device="cpu",
-            show=False
-        )
-        annotated = results[0].plot()
-        cv2.imshow(window_name, annotated)
+        frame = frame_queue.get()
+        start = time.time()
+        # streaming gives a generator but here we know it's one result per frame
+        results = model(source=frame, stream=True,
+                        conf=CONFIDENCE_THRESHOLD, iou=IOU_THRESHOLD)
+        for res in results:
+            annotated = res.plot()
+            fps = 1.0 / (time.time() - start)
+            cv2.putText(
+                annotated,
+                f"FPS: {fps:.2f}",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 255, 0),
+                2
+            )
+            # Manage result queue size similarly
+            if result_queue.full():
+                try:
+                    result_queue.get_nowait()
+                except Queue.Empty:
+                    pass
+            result_queue.put(annotated)
 
-# Start the inference thread
-thread = threading.Thread(target=inference_thread, daemon=True)
-thread.start()
-
-try:
+def display_thread():
+    """ Fetches annotated frames from result_queue and displays them. """
     while True:
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        frame = result_queue.get()
+        cv2.imshow("YOLO11n TFLite (Multithreaded)", frame)
+        key = cv2.waitKey(1) & 0xFF
+        if key in (ord('q'), 27):
             break
-
-finally:
-    cam.stop()
     cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    # 4. Launch threads
+    threads = [
+        threading.Thread(target=capture_thread, daemon=True),
+        threading.Thread(target=inference_thread, daemon=True),
+        threading.Thread(target=display_thread, daemon=True),
+    ]
+    for t in threads:
+        t.start()
+
+    # 5. Keep main thread alive until display_thread exits
+    threads[2].join()
