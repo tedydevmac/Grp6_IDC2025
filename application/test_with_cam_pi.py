@@ -4,9 +4,10 @@ from tflite_runtime.interpreter import Interpreter
 from picamera2 import Picamera2
 import threading
 from queue import Queue
+from concurrent.futures import ThreadPoolExecutor
 
-# --- Setup TFLite interpreter once ---
-interpreter = Interpreter(model_path="bestV11_3_full_integer_quant.tflite")
+# --- Setup TFLite interpreter with multi-threading ---
+interpreter = Interpreter(model_path="bestV11_3_full_integer_quant.tflite", num_threads=4)
 interpreter.allocate_tensors()
 input_details  = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
@@ -49,18 +50,24 @@ cam = CameraStream().start()
 cv2.namedWindow("Live", cv2.WINDOW_NORMAL)
 cv2.resizeWindow("Live", 800, 600)
 
+# --- ThreadPoolExecutor for parallel inference ---
+executor = ThreadPoolExecutor(max_workers=2)
+
+def run_inference(frame):
+    interpreter.set_tensor(input_details[0]['index'], np.expand_dims(frame, axis=0))
+    interpreter.invoke()
+    boxes = interpreter.get_tensor(output_details[0]['index'])[0]
+    classes = interpreter.get_tensor(output_details[1]['index'])[0]
+    scores = interpreter.get_tensor(output_details[2]['index'])[0]
+    return boxes, classes, scores
+
 try:
     while True:
         frame = cam.read()  # already right size & format
 
-        # --- Inference with zero preprocess overhead ---
-        interpreter.set_tensor(input_details[0]['index'],
-                               np.expand_dims(frame, axis=0))
-        interpreter.invoke()
-
-        boxes   = interpreter.get_tensor(output_details[0]['index'])[0]
-        classes = interpreter.get_tensor(output_details[1]['index'])[0]
-        scores  = interpreter.get_tensor(output_details[2]['index'])[0]
+        # Submit inference task to the executor
+        future = executor.submit(run_inference, frame)
+        boxes, classes, scores = future.result()
 
         # --- Draw green boxes ourselves ---
         h, w, _ = frame.shape
@@ -81,3 +88,4 @@ try:
 finally:
     cam.stop()
     cv2.destroyAllWindows()
+    executor.shutdown()
