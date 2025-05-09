@@ -1,88 +1,58 @@
-from ultralytics import YOLO
 import cv2
+from ultralytics import YOLO
 import threading
-import time
-from queue import Queue
+import queue
 
-# 1. Configuration
-MODEL_PATH = "yolo11n_full_integer_quant.tflite"
-CAMERA_ID = 0
-FRAME_QUEUE_SIZE = 4
-CONFIDENCE_THRESHOLD = 0.25
-IOU_THRESHOLD = 0.45
+# Load model (detect task)
+model = YOLO("/Users/tedgoh/Grp6_IDC2025/ml/models/bestV11_3_saved_model/bestV11_3_full_integer_quant.tflite", task="detect")
 
-# 2. Load model once
-model = YOLO(MODEL_PATH)
+# Initialize camera with optimized resolution and buffer size for Raspberry Pi
+cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)  # Directly set width to 320
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)  # Directly set height to 240
+cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer size to minimize latency
+if not cap.isOpened():
+    raise RuntimeError("Cannot open camera")
 
-# 3. Queues for frames & results
-frame_queue = Queue(maxsize=FRAME_QUEUE_SIZE)
-result_queue = Queue(maxsize=FRAME_QUEUE_SIZE)
+frame_queue = queue.Queue(maxsize=2)  # Thread-safe queue for frames
+stop_event = threading.Event()
 
-def capture_thread():
-    """ Continuously captures frames from camera and pushes into frame_queue. """
-    cap = cv2.VideoCapture(CAMERA_ID)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
-    while True:
+# Thread for capturing frames
+def capture_frames():
+    while not stop_event.is_set():
         ret, frame = cap.read()
-        if not ret:
-            break
-        # Drop oldest if queue full to keep latest frames
-        if frame_queue.full():
-            try:
-                frame_queue.get_nowait()
-            except Queue.Empty:
-                pass
-        frame_queue.put(frame)
-    cap.release()
+        if ret:
+            # Skip adding frames if the queue is full
+            if not frame_queue.full():
+                frame_queue.put(frame)
 
-def inference_thread():
-    """ Pulls frames from frame_queue, runs inference, and pushes annotated frames to result_queue. """
-    while True:
-        frame = frame_queue.get()
-        start = time.time()
-        # streaming gives a generator but here we know it's one result per frame
-        results = model(source=frame, stream=True,
-                        conf=CONFIDENCE_THRESHOLD, iou=IOU_THRESHOLD)
-        for res in results:
-            annotated = res.plot()
-            fps = 1.0 / (time.time() - start)
-            cv2.putText(
-                annotated,
-                f"FPS: {fps:.2f}",
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 255, 0),
-                2
-            )
-            # Manage result queue size similarly
-            if result_queue.full():
-                try:
-                    result_queue.get_nowait()
-                except Queue.Empty:
-                    pass
-            result_queue.put(annotated)
+# Thread for processing frames
+def process_frames():
+    while not stop_event.is_set():
+        if not frame_queue.empty():
+            frame = frame_queue.get()
 
-def display_thread():
-    """ Fetches annotated frames from result_queue and displays them. """
-    while True:
-        frame = result_queue.get()
-        cv2.imshow("YOLO11n TFLite (Multithreaded)", frame)
-        key = cv2.waitKey(1) & 0xFF
-        if key in (ord('q'), 27):
-            break
-    cv2.destroyAllWindows()
+            # Inference on CPU with optimized settings
+            results = model.predict(frame, imgsz=512, conf=0.5, iou=0.4, device="cpu", show=False)
 
-if __name__ == "__main__":
-    # 4. Launch threads
-    threads = [
-        threading.Thread(target=capture_thread, daemon=True),
-        threading.Thread(target=inference_thread, daemon=True),
-        threading.Thread(target=display_thread, daemon=True),
-    ]
-    for t in threads:
-        t.start()
+            # Draw boxes and labels
+            annotated = results[0].plot()
 
-    # 5. Keep main thread alive until display_thread exits
-    threads[2].join()
+            # Display the annotated frame
+            cv2.imshow("YOLOv11n TFLite (Raspberry Pi)", annotated)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                stop_event.set()
+                break
+
+# Start threads
+capture_thread = threading.Thread(target=capture_frames)
+process_thread = threading.Thread(target=process_frames)
+capture_thread.start()
+process_thread.start()
+
+# Wait for threads to finish
+capture_thread.join()
+process_thread.join()
+
+cap.release()
+cv2.destroyAllWindows()
