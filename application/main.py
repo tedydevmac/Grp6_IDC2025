@@ -3,6 +3,8 @@ import cv2
 import time
 import serial
 from ultralytics import YOLO
+import threading
+import queue
 
 # ---------------------------
 # Serial (PySerial) Setup
@@ -29,9 +31,9 @@ def send_serial_command(command: str):
 # Load YOLOv8 Model
 # ---------------------------
 # Replace this path with the location of your trained YOLOv8 model.
-model_path = "path/to/single_model.pt"  # Path to the single YOLOv8 model
+model_path = "/Users/tedgoh/Grp6_IDC2025/ml/models/bestV11_4_saved_model/bestV11_4_full_integer_quant.tflite"  # Path to the single YOLOv8 model
 
-print("Loading YOLOv8 model...")
+print("Loading YOLO11n model...")
 model = YOLO(model_path)
 print("Model loaded.")
 
@@ -126,29 +128,25 @@ def check_arduino_input():
     return None
 
 # ---------------------------
-# Main Loop: Capture and Process Frames
+# Initialize a thread-safe queue for frames
 # ---------------------------
-def main():
-    cap = cv2.VideoCapture(0)  # Open the default camera; change if necessary.
-    if not cap.isOpened():
-        print("Error: Could not open camera.")
-        return
+frame_queue = queue.Queue(maxsize=2)
+stop_event = threading.Event()
 
-    print("Starting video stream. Waiting for Arduino input.")
-
-    food_classes = {0: "sandwich", 1: "hotdog", 2: "burger"}
-    medical_classes = {0: "napkin", 1: "syringe", 2: "bandage"}
-
-    detection_mode = None  # Initialize detection mode
-
-    while True:
+# Thread for capturing frames
+def capture_frames(cap):
+    while not stop_event.is_set():
         ret, frame = cap.read()
-        if not ret:
-            print("Failed to grab frame.")
-            break
+        if ret:
+            if not frame_queue.full():
+                frame_queue.put(frame)
 
-        cv2.imshow("Frame", frame)
+# Thread for processing frames
+def process_frames(food_classes, medical_classes):
+    global accumulated_medical_counts
+    detection_mode = None
 
+    while not stop_event.is_set():
         # Check for Arduino input to set detection mode
         arduino_input = check_arduino_input()
         if arduino_input == "food":
@@ -165,28 +163,56 @@ def main():
             detection_mode = None
 
         # Perform detection based on the current mode
-        if detection_mode == "food":
-            food_results = detect_items(frame, food_classes)
-            for item, count in food_results.items():
-                if count > 0:  # If any food item is detected
-                    send_serial_command(f"food_{item}")
-                    print(f"Detected and sent food item: {item}")
+        if detection_mode and not frame_queue.empty():
+            frame = frame_queue.get()
 
-        elif detection_mode == "medical":
-            medical_results = detect_items(frame, medical_classes)
-            update_accumulated_counts(medical_results, accumulated_medical_counts)
-            print("Accumulated medical detection results:", accumulated_medical_counts)
+            if detection_mode == "food":
+                food_results = detect_items(frame, food_classes)
+                for item, count in food_results.items():
+                    if count > 0:  # If any food item is detected
+                        send_serial_command(f"food_{item}")
+                        print(f"Detected and sent food item: {item}")
 
-            # Send medical results via serial
-            for item, count in accumulated_medical_counts.items():
-                send_serial_command(f"medical_{item}:{count}")
+            elif detection_mode == "medical":
+                medical_results = detect_items(frame, medical_classes)
+                update_accumulated_counts(medical_results, accumulated_medical_counts)
+                print("Accumulated medical detection results:", accumulated_medical_counts)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            print("Exiting...")
-            break
+                # Send medical results via serial
+                for item, count in accumulated_medical_counts.items():
+                    send_serial_command(f"medical_{item}:{count}")
+
+            # Display the frame
+            cv2.imshow("YOLO Detection", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                stop_event.set()
+                break
+
+# Main function
+if __name__ == '__main__':
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+    if not cap.isOpened():
+        print("Error: Could not open camera.")
+        exit()
+
+    print("Starting video stream. Waiting for Arduino input.")
+
+    food_classes = {0: "sandwich", 1: "hotdog", 2: "burger"}
+    medical_classes = {0: "napkin", 1: "syringe", 2: "bandage"}
+
+    # Start threads
+    capture_thread = threading.Thread(target=capture_frames, args=(cap,))
+    process_thread = threading.Thread(target=process_frames, args=(food_classes, medical_classes))
+    capture_thread.start()
+    process_thread.start()
+
+    # Wait for threads to finish
+    capture_thread.join()
+    process_thread.join()
 
     cap.release()
     cv2.destroyAllWindows()
-
-if __name__ == '__main__':
-    main()

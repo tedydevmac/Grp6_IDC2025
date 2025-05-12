@@ -4,7 +4,7 @@ import threading
 import queue
 
 # Load model (detect task)
-model = YOLO("/Users/tedgoh/Grp6_IDC2025/ml/models/bestV11_3_saved_model/bestV11_3_full_integer_quant.tflite", task="detect")
+model = YOLO("/Users/tedgoh/Grp6_IDC2025/ml/models/bestV11_4_saved_model/bestV11_4_full_integer_quant.tflite", task="detect")
 
 # Initialize camera with optimized resolution and buffer size for Raspberry Pi
 cap = cv2.VideoCapture(0)
@@ -33,7 +33,7 @@ def process_frames():
             frame = frame_queue.get()
 
             # Inference on CPU with optimized settings
-            results = model.predict(frame, imgsz=512, conf=0.5, iou=0.4, device="cpu", show=False)
+            results = model.predict(frame, imgsz=512, conf=0.9, iou=0.5, device="cpu", show=False)
 
             # Draw boxes and labels
             annotated = results[0].plot()
