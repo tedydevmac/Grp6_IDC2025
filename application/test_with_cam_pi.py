@@ -11,6 +11,7 @@ cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)  # Directly set width to 320
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)  # Directly set height to 240
 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer size to minimize latency
+cap.set(cv2.CAP_PROP_FPS, 15)  # Limit frame rate to 15 FPS for efficiency
 if not cap.isOpened():
     raise RuntimeError("Cannot open camera")
 
@@ -33,7 +34,7 @@ def process_frames():
             frame = frame_queue.get()
 
             # Inference on CPU with optimized settings
-            results = model.predict(frame, imgsz=512, conf=0.9, iou=0.5, device="cpu", show=False)
+            results = model.predict(frame, imgsz=256, conf=0.8, iou=0.4, device="cpu", show=False)  # Reduced imgsz, conf, and iou for speed
 
             # Draw boxes and labels
             annotated = results[0].plot()
