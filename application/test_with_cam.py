@@ -2,7 +2,7 @@ import cv2
 from ultralytics import YOLO
 
 # Load model (detect task)
-model = YOLO("/Volumes/T9/tedgoh/Grp6_IDC2025/ml/models/best2_saved_model/best_full_integer_quant.tflite", task="detect")
+model = YOLO("/Volumes/T9/tedgoh/Grp6_IDC2025/ml/models/best4_saved_model/best_full_integer_quant.tflite", task="detect")
 
 # Initialize camera
 cap = cv2.VideoCapture(0)
@@ -15,7 +15,7 @@ while True:
         break
 
     # Inference on CPU
-    results = model.predict(frame, imgsz=640, conf=0.65, iou=0.4, device="cpu", show=False)
+    results = model.predict(frame, imgsz=512, conf=0.85, iou=0.5, device="cpu", show=False)
 
     # Draw boxes and labels
     annotated = results[0].plot()  
