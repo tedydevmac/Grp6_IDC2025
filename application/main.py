@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import cv2
 import time
 import serial
@@ -30,11 +29,10 @@ def send_serial_command(command: str):
 # ---------------------------
 # Load YOLOv8 Model
 # ---------------------------
-# Replace this path with the location of your trained YOLOv8 model.
-model_path = "/Users/tedgoh/Grp6_IDC2025/ml/models/bestV11_4_saved_model/bestV11_4_full_integer_quant.tflite"  # Path to the single YOLOv8 model
+model_path = "/Volumes/T9/tedgoh/Grp6_IDC2025/ml/models/best4_saved_model_512_40epochs/best_full_integer_quant.tflite"
 
 print("Loading YOLO11n model...")
-model = YOLO(model_path)
+model = YOLO(model_path, task="detect")
 print("Model loaded.")
 
 # ---------------------------
