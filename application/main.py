@@ -3,7 +3,7 @@ import time
 import serial
 from ultralytics import YOLO
 import threading
-import queue
+from collections import deque
 
 # ---------------------------
 # Serial (PySerial) Setup
@@ -17,14 +17,16 @@ except Exception as e:
     ser = None
 
 def send_serial_command(command: str):
-    if ser:
+    global last_command
+    if ser and command != last_command:
         try:
             ser.write(command.encode())
+            last_command = command
             print("Sent command:", command)
         except Exception as e:
             print("Error sending command:", e)
     else:
-        print("Serial port not available. Cannot send command.")
+        print("Serial port not available or command unchanged.")
 
 # ---------------------------
 # Load YOLOv8 Model
@@ -39,6 +41,7 @@ print("Model loaded.")
 # Global Variables for Accumulated Counts
 # ---------------------------
 accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
+last_command = None
 
 # ---------------------------
 # Reset Accumulated Counts
@@ -75,15 +78,9 @@ def detect_items(frame, item_classes):
             if cls in item_classes:
                 # Get bounding box coordinates
                 x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
-                box_area = (x2 - x1) * (y2 - y1)
 
                 # Check for duplicate detections
-                is_duplicate = False
-                for existing_box in detected_boxes:
-                    iou = calculate_iou((x1, y1, x2, y2), existing_box)
-                    if iou > 0.5:  # IoU threshold for duplicate detection
-                        is_duplicate = True
-                        break
+                is_duplicate = any(calculate_iou((x1, y1, x2, y2), existing_box) > 0.5 for existing_box in detected_boxes)
 
                 if not is_duplicate:
                     detected_boxes.append((x1, y1, x2, y2))
@@ -102,10 +99,7 @@ def calculate_iou(box1, box2):
     x2 = min(box1[2], box2[2])
     y2 = min(box1[3], box2[3])
 
-    # Calculate intersection area
     intersection = max(0, x2 - x1) * max(0, y2 - y1)
-
-    # Calculate union area
     box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
     box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
     union = box1_area + box2_area - intersection
@@ -116,7 +110,7 @@ def calculate_iou(box1, box2):
 # Check for Arduino Input
 # ---------------------------
 def check_arduino_input():
-    if (ser and ser.in_waiting > 0):
+    if ser and ser.in_waiting > 0:
         try:
             input_data = ser.readline().decode('utf-8').strip()
             print("Received from Arduino:", input_data)
@@ -126,18 +120,20 @@ def check_arduino_input():
     return None
 
 # ---------------------------
-# Initialize a thread-safe queue for frames
+# Initialize a thread-safe deque for frames
 # ---------------------------
-frame_queue = queue.Queue(maxsize=2)
+frame_queue = deque(maxlen=2)
 stop_event = threading.Event()
 
-# Thread for capturing frames
-def capture_frames(cap):
+# Thread for capturing frames with frame skipping
+def capture_frames(cap, frame_skip=2):
+    frame_count = 0
     while not stop_event.is_set():
         ret, frame = cap.read()
         if ret:
-            if not frame_queue.full():
-                frame_queue.put(frame)
+            frame_count += 1
+            if frame_count % frame_skip == 0:  # Skip frames
+                frame_queue.append(frame)
 
 # Thread for processing frames
 def process_frames(food_classes, medical_classes):
@@ -161,8 +157,8 @@ def process_frames(food_classes, medical_classes):
             detection_mode = None
 
         # Perform detection based on the current mode
-        if detection_mode and not frame_queue.empty():
-            frame = frame_queue.get()
+        if detection_mode and frame_queue:
+            frame = frame_queue.popleft()
 
             if detection_mode == "food":
                 food_results = detect_items(frame, food_classes)
@@ -188,6 +184,9 @@ def process_frames(food_classes, medical_classes):
 
 # Main function
 if __name__ == '__main__':
+    cv2.setUseOptimized(True)  # Enable OpenCV optimization
+    cv2.setNumThreads(4)  # Use 4 threads for OpenCV
+
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
@@ -203,7 +202,7 @@ if __name__ == '__main__':
     medical_classes = {0: "napkin", 1: "syringe", 2: "bandage"}
 
     # Start threads
-    capture_thread = threading.Thread(target=capture_frames, args=(cap,))
+    capture_thread = threading.Thread(target=capture_frames, args=(cap, 2))  # Skip every 2nd frame
     process_thread = threading.Thread(target=process_frames, args=(food_classes, medical_classes))
     capture_thread.start()
     process_thread.start()
