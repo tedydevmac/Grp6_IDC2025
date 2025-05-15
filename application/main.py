@@ -31,7 +31,7 @@ def send_serial_command(command: str):
 # ---------------------------
 # Load YOLOv8 Model
 # ---------------------------
-model_path = "/Volumes/T9/tedgoh/Grp6_IDC2025/ml/models/best4_saved_model_512_40epochs/best_full_integer_quant.tflite"
+model_path = "/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best4_saved_model_512_40epochs/best_full_integer_quant.tflite"
 
 print("Loading YOLO11n model...")
 model = YOLO(model_path, task="detect")
@@ -42,20 +42,42 @@ print("Model loaded.")
 # ---------------------------
 accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
 last_command = None
+# Track which objects have been detected to avoid counting them multiple times
+detected_medical_objects = []
 
 # ---------------------------
 # Reset Accumulated Counts
 # ---------------------------
 def reset_accumulated_counts():
-    global accumulated_medical_counts
+    global accumulated_medical_counts, detected_medical_objects
     accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
+    detected_medical_objects = []  # Also reset the tracking of detected objects
 
 # ---------------------------
 # Update Accumulated Counts
 # ---------------------------
-def update_accumulated_counts(detection_results, accumulated_counts):
+def update_accumulated_counts(detection_results, accumulated_counts, detected_boxes):
+    global detected_medical_objects
+    
+    # Compare new detections with previously detected objects
+    new_detected_objects = []
     for item, count in detection_results.items():
-        accumulated_counts[item] += count
+        for i in range(count):
+            box = next((b for b, item_name in detected_boxes if item_name == item), None)
+            if box:
+                # Check if this object has been detected before
+                is_new_object = True
+                for old_box, old_item in detected_medical_objects:
+                    if old_item == item and calculate_iou(box, old_box) > 0.05:  # Higher IoU threshold for same object
+                        is_new_object = False
+                        break
+                
+                if is_new_object:
+                    new_detected_objects.append((box, item))
+                    accumulated_counts[item] += 1
+    
+    # Update the list of detected objects
+    detected_medical_objects.extend(new_detected_objects)
 
 # ---------------------------
 # Detection Functions
@@ -65,9 +87,9 @@ def detect_items(frame, item_classes):
     Detect and count items in the frame using YOLOv8.
     Filters out duplicate detections of the same object.
     item_classes: A dictionary mapping class indices to item names.
-    Returns a dictionary with counts for each item.
+    Returns a dictionary with counts for each item and the detected boxes.
     """
-    results = model.predict(frame, conf=0.5)  # Adjust confidence threshold as needed
+    results = model.predict(frame, conf=0.75, imgsz=512)  # Adjust confidence threshold as needed
     item_counts = {item: 0 for item in item_classes.values()}
 
     detected_boxes = []  # Store processed bounding boxes to avoid duplicates
@@ -78,15 +100,17 @@ def detect_items(frame, item_classes):
             if cls in item_classes:
                 # Get bounding box coordinates
                 x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
+                box_coords = (x1, y1, x2, y2)
 
                 # Check for duplicate detections
-                is_duplicate = any(calculate_iou((x1, y1, x2, y2), existing_box) > 0.5 for existing_box in detected_boxes)
+                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.5 for existing_box, _ in detected_boxes)
 
                 if not is_duplicate:
-                    detected_boxes.append((x1, y1, x2, y2))
-                    item_counts[item_classes[cls]] += 1
+                    item_name = item_classes[cls]
+                    detected_boxes.append((box_coords, item_name))
+                    item_counts[item_name] += 1
 
-    return item_counts
+    return item_counts, detected_boxes
 
 def calculate_iou(box1, box2):
     """
@@ -126,7 +150,7 @@ frame_queue = deque(maxlen=2)
 stop_event = threading.Event()
 
 # Thread for capturing frames with frame skipping
-def capture_frames(cap, frame_skip=2):
+def capture_frames(cap, frame_skip=4):
     frame_count = 0
     while not stop_event.is_set():
         ret, frame = cap.read()
@@ -138,7 +162,7 @@ def capture_frames(cap, frame_skip=2):
 # Thread for processing frames
 def process_frames(food_classes, medical_classes):
     global accumulated_medical_counts
-    detection_mode = None
+    detection_mode = "medical"
 
     while not stop_event.is_set():
         # Check for Arduino input to set detection mode
@@ -161,31 +185,25 @@ def process_frames(food_classes, medical_classes):
             frame = frame_queue.popleft()
 
             if detection_mode == "food":
-                food_results = detect_items(frame, food_classes)
+                food_results, _ = detect_items(frame, food_classes)
                 for item, count in food_results.items():
                     if count > 0:  # If any food item is detected
                         send_serial_command(f"food_{item}")
                         print(f"Detected and sent food item: {item}")
 
             elif detection_mode == "medical":
-                medical_results = detect_items(frame, medical_classes)
-                update_accumulated_counts(medical_results, accumulated_medical_counts)
+                medical_results, medical_boxes = detect_items(frame, medical_classes)
+                update_accumulated_counts(medical_results, accumulated_medical_counts, medical_boxes)
                 print("Accumulated medical detection results:", accumulated_medical_counts)
 
                 # Send medical results via serial
                 for item, count in accumulated_medical_counts.items():
                     send_serial_command(f"medical_{item}:{count}")
 
-            # Display the frame
-            cv2.imshow("YOLO Detection", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                stop_event.set()
-                break
-
 # Main function
 if __name__ == '__main__':
     cv2.setUseOptimized(True)  # Enable OpenCV optimization
-    cv2.setNumThreads(4)  # Use 4 threads for OpenCV
+    cv2.setNumThreads(2)  # Use 2 threads for OpenCV
 
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
@@ -198,11 +216,11 @@ if __name__ == '__main__':
 
     print("Starting video stream. Waiting for Arduino input.")
 
-    food_classes = {0: "sandwich", 1: "hotdog", 2: "burger"}
-    medical_classes = {0: "napkin", 1: "syringe", 2: "bandage"}
+    food_classes = {4: "sandwich", 1: "burger", 2: "hotdog"}
+    medical_classes = {3: "napkin", 5: "syringe", 0: "bandage"}
 
     # Start threads
-    capture_thread = threading.Thread(target=capture_frames, args=(cap, 2))  # Skip every 2nd frame
+    capture_thread = threading.Thread(target=capture_frames, args=(cap, 4))  # Skip every 2nd frame
     process_thread = threading.Thread(target=process_frames, args=(food_classes, medical_classes))
     capture_thread.start()
     process_thread.start()
@@ -212,4 +230,3 @@ if __name__ == '__main__':
     process_thread.join()
 
     cap.release()
-    cv2.destroyAllWindows()
