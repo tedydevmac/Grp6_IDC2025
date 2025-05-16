@@ -175,9 +175,9 @@ void twoSensorLineTrace(int opt, float sec = 0, int speed = mainSpeed) {
     while (millis() < stop_time) {
       left_read = analogRead(left_ir);
       right_read = analogRead(right_ir);
-      Serial.print(left_read);
-      Serial.print(" ");
-      Serial.println(right_read);
+      // Serial.print(left_read);
+      // Serial.print(" ");
+      // Serial.println(right_read);
 
       error = right_read - left_read + 80;
       pid_error = error * kp + (error - prev_error) * kd;
@@ -209,13 +209,13 @@ void turnClaw(int opt) {
   if (opt == open) {
     claw_servo.attach(claw_pin); // Attach before moving
     claw_servo.write(0);
-    delay(600); // Give the servo time to reach the position
+    delay(1000); // Give the servo time to reach the position
     claw_servo.detach();
     Serial.println("Opened");
   } else if (opt == close) {
     claw_servo.attach(claw_pin); // Attach before moving
     claw_servo.write(180);
-    delay(600); // Give the servo time to reach the position
+    delay(1000); // Give the servo time to reach the position
     claw_servo.detach();
     Serial.println("Closed");
   }
@@ -228,8 +228,8 @@ void lift(int opt) {
     delay(500); // Give the servo time to reach the position
     Serial.println("Lifted");
   } else if (opt == down) {
-    forebar_left_servo.write(40);
-    forebar_right_servo.write(142);
+    forebar_left_servo.write(60);
+    forebar_right_servo.write(122);
     delay(500); // Give the servo time to reach the position
     Serial.println("Lowered");
   }
@@ -251,14 +251,20 @@ void loop() {
   if (run) {
     // Init
     lift(down);
-    // turnClaw(open);
+    turnClaw(open);
     // camera_servo.write(90);
 
     // Testing
     // move(0.5);
-    twoSensorLineTrace(timing, 100);
+    // twoSensorLineTrace(timing, 100);
     // move(-0.5);
-    // turnClaw(close);
+    turnClaw(close);
+    lift(up);
+    motorL.setSpeed(-200);
+    motorR.setSpeed(-100);
+    delay(1000);
+    motorL.setSpeed(0);
+    motorR.setSpeed(0);
 
     // // Go to food
     // move(0.5);
