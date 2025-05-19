@@ -5,7 +5,7 @@
 #define right_ir A1
 
 #define claw_pin 4
-#define forebar_left 6
+#define forebar_left 2
 #define forebar_right 7
 #define camera_pin 8
 
@@ -22,7 +22,7 @@
 #define up 0
 #define down 1
 
-CytronMD motorL(PWM_PWM, 3, 9);
+CytronMD motorL(PWM_PWM, 3, 6);
 CytronMD motorR(PWM_PWM, 5, 11);
 
 Servo claw_servo;
@@ -32,12 +32,7 @@ Servo camera_servo;
 
 int mainSpeed = 191;
 int blackThreshold = 700;
-
-// Variables to track medical object counts
-int napkin_count = 0;
-int syringe_count = 0;
-int bandage_count = 0;
-
+  
 void setup() {
   pinMode(left_ir, INPUT);
   pinMode(right_ir, INPUT);
@@ -46,9 +41,6 @@ void setup() {
   forebar_right_servo.attach(forebar_right);
   camera_servo.attach(camera_pin);
   Serial.begin(9600);
-  // Wait for serial port to connect (needed for native USB)
-  while (!Serial && millis() < 3000) {}
-  Serial.println("Arduino ready");
   delay(10);
 }
 
@@ -67,6 +59,7 @@ void move(float sec, int speed = mainSpeed) {
 }
 
 void spotTurn(float sec, int direction, int speed = mainSpeed) {
+  double stop_time = millis() + abs(sec) * 1000;
   if (direction == right) {
     motorL.setSpeed(speed);
     motorR.setSpeed(-speed);
@@ -74,6 +67,9 @@ void spotTurn(float sec, int direction, int speed = mainSpeed) {
     motorL.setSpeed(-speed);
     motorR.setSpeed(speed);
   }
+  while (millis() < stop_time) {}
+  motorL.setSpeed(0);
+  motorR.setSpeed(0);
 }
 
 void curveTurn(int curve, int speed = mainSpeed) {
@@ -93,7 +89,7 @@ void curveTurn(int curve, int speed = mainSpeed) {
 }
 
 void oneSensorLineTrace(int type, int side, float sec = 0, int speed = mainSpeed) {
-  float kp = 0.6;
+  float kp = 0.8;
   float kd = -0.005;
   float prev_error = 0;
 
@@ -229,15 +225,15 @@ void turnClaw(int opt) {
   }
 }
 
-void lift(int opt) {
+void liftClaw(int opt) {
   if (opt == up) {
     forebar_left_servo.write(100);
     forebar_right_servo.write(82);
     delay(500); // Give the servo time to reach the position
     Serial.println("Lifted");
   } else if (opt == down) {
-    forebar_left_servo.write(60);
-    forebar_right_servo.write(122);
+    forebar_left_servo.write(50);
+    forebar_right_servo.write(132);
     delay(500); // Give the servo time to reach the position
     Serial.println("Lowered");
   }
@@ -246,102 +242,72 @@ void lift(int opt) {
 void autoTurn() {
   oneSensorLineTrace(timing, left, 0.5);
   oneSensorLineTrace(junction, left);
-  oneSensorLineTrace(timing, left, 0.1);
+  oneSensorLineTrace(timing, left, 0.3, 225);
   twoSensorLineTrace(junction, 0, 64);
 }
 
-// Function to check for serial commands
-void checkSerialCommand() {
-  if (Serial.available() > 0) {
-    String data = Serial.readStringUntil('\n');
-    data.trim();  // Remove any whitespace or newline characters
-    
-    if (data.startsWith("food_")) {
-      // Process food detection
-      String foodType = data.substring(5);  // Get the part after "food_"
-      Serial.print("Detected food: ");
-      Serial.println(foodType);
-      
-      // Update choice based on detected food
-      if (foodType == "sandwich") {
-        choice1 = "sandwich";
-      } else if (foodType == "burger") {
-        choice1 = "burger";
-      } else if (foodType == "hotdog") {
-        choice1 = "hotdog";
-      }
-    }
-    else if (data.startsWith("medical_")) {
-      // Process medical item detection
-      int colonIndex = data.indexOf(':');
-      if (colonIndex > 0) {
-        String itemType = data.substring(8, colonIndex); // Get part between "medical_" and ":"
-        int count = data.substring(colonIndex + 1).toInt();
-        
-        if (itemType == "napkin") {
-          napkin_count = count;
-        } else if (itemType == "syringe") {
-          syringe_count = count;
-        } else if (itemType == "bandage") {
-          bandage_count = count;
-        }
-        
-        Serial.print("Updated medical item count - ");
-        Serial.print(itemType);
-        Serial.print(": ");
-        Serial.println(count);
-      }
-    }
-  }
-}
-
 bool run = true;
-String choice1 = "sandwich";
-String choice2 = "napkin"; 
+int choice1 = "sandwich";
+int choice2 = "napkin"; 
 int location = middle;
+bool food_not_found = true;
   
 void loop() {
-  // Simple serial communication test
-  
-  // Check for incoming serial data
-  if (Serial.available() > 0) {
-    // Read the incoming string until newline
-    String receivedData = Serial.readStringUntil('\n');
-    receivedData.trim();  // Remove any whitespace or newline characters
-    
-    // Echo the received data back with a prefix
-    Serial.print("Arduino received: ");
-    Serial.println(receivedData);
-    
-    // Send an acknowledgment
-    Serial.println("ACK");
-    
-    // If it's a command we recognize, process it
-    if (receivedData.startsWith("food_") || receivedData.startsWith("medical_")) {
-      checkSerialCommand();
-      
-      // Print the current state of variables
-      if (receivedData.startsWith("food_")) {
-        Serial.print("Current food choice: ");
-        Serial.println(choice1);
-      } else if (receivedData.startsWith("medical_")) {
-        Serial.print("Current medical counts - Napkin: ");
-        Serial.print(napkin_count);
-        Serial.print(", Syringe: ");
-        Serial.print(syringe_count);
-        Serial.print(", Bandage: ");
-        Serial.println(bandage_count);
+  if (run) {
+    // Init
+    liftClaw(down);
+    turnClaw(open);
+    // camera_servo.write(90);
+
+    // Testing
+    // turnClaw(close);
+    // liftClaw(up);
+    // spotTurn(1,left);
+
+    // // Go to food
+    // move(0.5);
+    // oneSensorLineTrace(timing, left, 0.5);
+    // autoTurn();
+
+    // Detect food location
+    Serial.println("food");
+    while (food_not_found) {
+      if (Serial.available() > 0) {
+        String data = Serial.readStringUntil("\n");
+        if (data.startsWith("food_") && data.substring(5) == choice1) {
+          turnClaw(close);
+          break;
+        } else {
+          if (location == middle) {
+            location = left;
+            camera_servo.write(60);
+          } else if (location == left) {
+            location = right;
+            camera_servo.write(120);
+          }
+        }
+      } else {
+        Serial.println("detecting");
+        delay(500);
       }
     }
+    
+    // // Get food
+    // if (location == middle) {
+    //   turnClaw(close);
+    //   spotTurn(1);
+    // } else if (location == left) {
+    //   spotTurn(0.25);
+    //   turnClaw(close);
+    //   spotTurn(-0.75);
+    // } else if (location == right) {
+    //   spotTurn(-0.25);
+    //   turnClaw(close);
+    //   spotTurn(0.75);
+    // }
+
+
+    Serial.println("done");
+    run = false;
   }
-  
-  // Send a heartbeat message every 5 seconds
-  static unsigned long lastHeartbeat = 0;
-  if (millis() - lastHeartbeat > 5000) {
-    Serial.println("Arduino heartbeat");
-    lastHeartbeat = millis();
-  }
-  
-  // Short delay to prevent excessive loop cycling
-  delay(50);
 }
