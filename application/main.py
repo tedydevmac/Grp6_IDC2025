@@ -9,7 +9,7 @@ from collections import deque
 # Serial (PySerial) Setup
 # ---------------------------
 try:
-    ser = serial.Serial('/dev/ttyUSB0', baudrate=9600, timeout=1)
+    ser = serial.Serial('/dev/tty', baudrate=9600, timeout=1)
     time.sleep(2)  # Allow some time to establish connection
     print("Serial connection established.")
 except Exception as e:
@@ -200,20 +200,6 @@ def process_frames(food_classes, medical_classes):
                 for item, count in accumulated_medical_counts.items():
                     send_serial_command(f"medical_{item}:{count}")
 
-# ---------------------------
-# Thread to continuously print Arduino input
-# ---------------------------
-def print_arduino_input():
-    while not stop_event.is_set():
-        if ser and ser.in_waiting > 0:
-            try:
-                input_data = ser.readline().decode('utf-8').strip()
-                if input_data:
-                    print("[Arduino]:", input_data)
-            except Exception as e:
-                print("Error reading from Arduino (print thread):", e)
-        time.sleep(0.05)  # Small delay to avoid busy waiting
-
 # Main function
 if __name__ == '__main__':
     cv2.setUseOptimized(True)  # Enable OpenCV optimization
@@ -236,15 +222,11 @@ if __name__ == '__main__':
     # Start threads
     capture_thread = threading.Thread(target=capture_frames, args=(cap, 4))  # Skip every 2nd frame
     process_thread = threading.Thread(target=process_frames, args=(food_classes, medical_classes))
-    arduino_print_thread = threading.Thread(target=print_arduino_input)
     capture_thread.start()
     process_thread.start()
-    arduino_print_thread.start()
 
     # Wait for threads to finish
     capture_thread.join()
     process_thread.join()
-    stop_event.set()  # Ensure print thread stops if others finish
-    arduino_print_thread.join()
 
     cap.release()
