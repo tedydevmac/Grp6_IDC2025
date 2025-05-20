@@ -4,17 +4,24 @@ import serial
 from ultralytics import YOLO
 import threading
 from collections import deque
-
+import glob
 # ---------------------------
 # Serial (PySerial) Setup
 # ---------------------------
-try:
-    ser = serial.Serial('/dev/tty', baudrate=9600, timeout=1)
-    time.sleep(2)  # Allow some time to establish connection
-    print("Connected to Arduino on port: ", ser.portstr)
-except Exception as e:
-    print("I hope this Arduino explodes: ", e)
-    ser = None
+ports_to_try = [
+    '/dev/tty.usbmodem*',
+    '/dev/tty.usbserial*'
+]
+ser = None
+for port_pattern in ports_to_try:
+    matching_ports = glob.glob(port_pattern)
+    if matching_ports:
+        try:
+            ser = serial.Serial(matching_ports[0], baudrate=9600, timeout=1)
+            print(f"Connected to Arduino on port: {ser.portstr}")
+            break
+        except Exception as e:
+            print(f"Failed to connect to Arduino on port{matching_ports[0]}: {e}")
 
 def send_serial_command(command: str):
     global last_command
@@ -29,7 +36,7 @@ def send_serial_command(command: str):
         print("Serial port not available or command unchanged.")
 
 # ---------------------------
-# Load YOLOv8 Model
+# Load YOLO11n Model
 # ---------------------------
 model_path = "/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best4_saved_model_512_40epochs/best_full_integer_quant.tflite"
 
@@ -162,7 +169,7 @@ def capture_frames(cap, frame_skip=4):
 # Thread for processing frames
 def process_frames(food_classes, medical_classes):
     global accumulated_medical_counts
-    detection_mode = "medical"
+    detection_mode = "food"
 
     while not stop_event.is_set():
         # Check for Arduino input to set detection mode
@@ -188,17 +195,17 @@ def process_frames(food_classes, medical_classes):
                 food_results, _ = detect_items(frame, food_classes)
                 for item, count in food_results.items():
                     if count > 0:  # If any food item is detected
-                        send_serial_command(f"{item}")
+                        send_serial_command(f"food_{item}")
                         print(f"Detected and sent food item: {item}")
 
             elif detection_mode == "medical":
                 medical_results, medical_boxes = detect_items(frame, medical_classes)
                 update_accumulated_counts(medical_results, accumulated_medical_counts, medical_boxes)
-                print("Accumulated medical detection results:", accumulated_medical_counts)
+                print("Accumulated medical detection results: ", accumulated_medical_counts)
 
                 # Send medical results via serial
                 for item, count in accumulated_medical_counts.items():
-                    send_serial_command(f"{item}:{count}")
+                    send_serial_command(f"medical_{item}:{count}")
 
 # Main function
 if __name__ == '__main__':
