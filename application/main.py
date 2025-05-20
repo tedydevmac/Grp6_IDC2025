@@ -11,9 +11,9 @@ from collections import deque
 try:
     ser = serial.Serial('/dev/tty', baudrate=9600, timeout=1)
     time.sleep(2)  # Allow some time to establish connection
-    print("Serial connection established.")
+    print("Connected to Arduino on port: ", ser.portstr)
 except Exception as e:
-    print("Serial initialization error:", e)
+    print("I hope this Arduino explodes: ", e)
     ser = None
 
 def send_serial_command(command: str):
@@ -22,9 +22,9 @@ def send_serial_command(command: str):
         try:
             ser.write(command.encode())
             last_command = command
-            print("Sent command:", command)
+            print("Sent to Arduino: ", command)
         except Exception as e:
-            print("Error sending command:", e)
+            print("Arduino did NOT receive: ", e)
     else:
         print("Serial port not available or command unchanged.")
 
@@ -33,7 +33,7 @@ def send_serial_command(command: str):
 # ---------------------------
 model_path = "/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best4_saved_model_512_40epochs/best_full_integer_quant.tflite"
 
-print("Loading YOLO11n model...")
+print("Loading model...")
 model = YOLO(model_path, task="detect")
 print("Model loaded.")
 
@@ -84,7 +84,7 @@ def update_accumulated_counts(detection_results, accumulated_counts, detected_bo
 # ---------------------------
 def detect_items(frame, item_classes):
     """
-    Detect and count items in the frame using YOLOv8.
+    Detect and count items in the frame using model.
     Filters out duplicate detections of the same object.
     item_classes: A dictionary mapping class indices to item names.
     Returns a dictionary with counts for each item and the detected boxes.
@@ -137,10 +137,10 @@ def check_arduino_input():
     if ser and ser.in_waiting > 0:
         try:
             input_data = ser.readline().decode('utf-8').strip()
-            print("Received from Arduino:", input_data)
+            print("Received from Arduino: ", input_data)
             return input_data
         except Exception as e:
-            print("Error reading from Arduino:", e)
+            print("Error reading from Arduino: ", e)
     return None
 
 # ---------------------------
@@ -188,7 +188,7 @@ def process_frames(food_classes, medical_classes):
                 food_results, _ = detect_items(frame, food_classes)
                 for item, count in food_results.items():
                     if count > 0:  # If any food item is detected
-                        send_serial_command(f"food_{item}")
+                        send_serial_command(f"{item}")
                         print(f"Detected and sent food item: {item}")
 
             elif detection_mode == "medical":
@@ -198,7 +198,7 @@ def process_frames(food_classes, medical_classes):
 
                 # Send medical results via serial
                 for item, count in accumulated_medical_counts.items():
-                    send_serial_command(f"medical_{item}:{count}")
+                    send_serial_command(f"{item}:{count}")
 
 # Main function
 if __name__ == '__main__':
