@@ -20,7 +20,8 @@
 #define close 1
 
 #define up 0
-#define down 1
+#define mid 1
+#define down 2
 
 CytronMD motorL(PWM_PWM, 3, 6);
 CytronMD motorR(PWM_PWM, 5, 11);
@@ -31,7 +32,7 @@ Servo forebar_right_servo;
 Servo camera_servo;
 
 int mainSpeed = 191;
-int blackThreshold = 700;
+int blackThreshold = 800;
   
 void setup() {
   pinMode(left_ir, INPUT);
@@ -48,17 +49,18 @@ void move(float sec, int speed = mainSpeed) {
   double stop_time = millis() + abs(sec) * 1000;
   if (sec > 0) {
     motorL.setSpeed(speed);
-    motorR.setSpeed(speed);
+    motorR.setSpeed(speed * 0.87);
   } else {
     motorL.setSpeed(-speed);
-    motorR.setSpeed(-speed);
+    motorR.setSpeed(-speed * 0.87);
   }
   while (millis() < stop_time) {}
   motorL.setSpeed(0);
   motorR.setSpeed(0);
+  delay(10);
 }
 
-void spotTurn(float sec, int direction, int speed = mainSpeed) {
+void spotTurn(int direction, float sec, int speed = mainSpeed) {
   double stop_time = millis() + abs(sec) * 1000;
   if (direction == right) {
     motorL.setSpeed(speed);
@@ -70,6 +72,7 @@ void spotTurn(float sec, int direction, int speed = mainSpeed) {
   while (millis() < stop_time) {}
   motorL.setSpeed(0);
   motorR.setSpeed(0);
+  delay(10);
 }
 
 void curveTurn(int curve, int speed = mainSpeed) {
@@ -86,6 +89,27 @@ void curveTurn(int curve, int speed = mainSpeed) {
     // Serial.print(" ");
     // Serial.println(speed);
   }
+}
+
+void moveUntilBlack(int side, int speed = mainSpeed) {
+  motorL.setSpeed(speed);
+  motorR.setSpeed(speed * 0.87);
+  if (side == left) {
+    int left_read = 0;
+    while (left_read < blackThreshold) {
+      left_read = analogRead(left_ir);
+      Serial.println(left_read);
+    }
+  } else if (side == right) {
+    int right_read = 0;
+    while (right_read < blackThreshold) {
+      right_read = analogRead(right_read);
+      Serial.println(right_read);
+    }
+  }
+  motorL.setSpeed(0);
+  motorR.setSpeed(0);
+  delay(10);
 }
 
 void oneSensorLineTrace(int type, int side, float sec = 0, int speed = mainSpeed) {
@@ -179,11 +203,11 @@ void twoSensorLineTrace(int opt, float sec = 0, int speed = mainSpeed) {
     while (millis() < stop_time) {
       left_read = analogRead(left_ir);
       right_read = analogRead(right_ir);
-      // Serial.print(left_read);
-      // Serial.print(" ");
-      // Serial.println(right_read);
+      Serial.print(left_read);
+      Serial.print(" ");
+      Serial.println(right_read);
 
-      error = right_read - left_read + 80;
+      error = right_read - left_read;
       pid_error = error * kp + (error - prev_error) * kd;
 
       curveTurn(pid_error);
@@ -198,7 +222,7 @@ void twoSensorLineTrace(int opt, float sec = 0, int speed = mainSpeed) {
       Serial.print(" ");
       Serial.println(right_read);
 
-      error = right_read - left_read + 80;
+      error = right_read - left_read;
       pid_error = error * kp + (error - prev_error) * kd;
 
       curveTurn(pid_error);
@@ -218,7 +242,7 @@ void turnClaw(int opt) {
     Serial.println("Opened");
   } else if (opt == close) {
     claw_servo.attach(claw_pin); // Attach before moving
-    claw_servo.write(180);
+    claw_servo.write(179);
     delay(1000); // Give the servo time to reach the position
     claw_servo.detach();
     Serial.println("Closed");
@@ -231,9 +255,14 @@ void liftClaw(int opt) {
     forebar_right_servo.write(82);
     delay(500); // Give the servo time to reach the position
     Serial.println("Lifted");
+  } else if (opt == mid) {
+    forebar_left_servo.write(80);
+    forebar_right_servo.write(102);
+    delay(500); // Give the servo time to reach the position
+    Serial.println("Middled");
   } else if (opt == down) {
-    forebar_left_servo.write(50);
-    forebar_right_servo.write(132);
+    forebar_left_servo.write(60);
+    forebar_right_servo.write(122);
     delay(500); // Give the servo time to reach the position
     Serial.println("Lowered");
   }
@@ -255,19 +284,44 @@ bool food_not_found = true;
 void loop() {
   if (run) {
     // Init
+    Serial.println("medical");
     liftClaw(down);
     turnClaw(open);
-    // camera_servo.write(90);
+    camera_servo.write(90);
 
     // Testing
-    // turnClaw(close);
-    // liftClaw(up);
-    // spotTurn(1,left);
 
-    // // Go to food
-    // move(0.5);
-    // oneSensorLineTrace(timing, left, 0.5);
-    // autoTurn();
+    // // Go to top left drink (from base)
+    // moveUntilBlack(left);
+    // move(0.1);
+    // spotTurn(left, 0.3);
+    // twoSensorLineTrace(timing, 1.4);
+    // move(-0.2);
+    // turnClaw(close);
+    // spotTurn(right, 2.5, 128);
+    // twoSensorLineTrace(timing, 3);
+    // turnClaw(open);
+
+    // // Go to top left drink (from base)
+    // moveUntilBlack(right);
+    // spotTurn(right, 0.1);
+    // oneSensorLineTrace(junction, right);
+    // move(1);
+    // twoSensorLineTrace(junction);
+    // move(-0.3);
+    // turnClaw(close);
+    // spotTurn(right, 2.5, 128);
+    // oneSensorLineTrace(junction, left);
+    // move(1);
+    // twoSensorLineTrace(timing, 4);
+    // turnClaw(open);
+
+    // Go to food 
+    moveUntilBlack(right);
+    move(0.2);  
+    spotTurn(right, 0.1);
+    twoSensorLineTrace(timing, 0.5);
+    autoTurn();
 
     // Detect food location
     Serial.println("food");
@@ -287,23 +341,22 @@ void loop() {
           }
         }
       } else {
-        Serial.println("detecting");
-        delay(500);
+        delay(10);
       }
     }
     
     // // Get food
     // if (location == middle) {
     //   turnClaw(close);
-    //   spotTurn(1);
+    //   spotTurn(1, right);
     // } else if (location == left) {
-    //   spotTurn(0.25);
+    //   spotTurn(0.25, right);
     //   turnClaw(close);
-    //   spotTurn(-0.75);
+    //   spotTurn(0.75, right);
     // } else if (location == right) {
-    //   spotTurn(-0.25);
+    //   spotTurn(0.25, left);
     //   turnClaw(close);
-    //   spotTurn(0.75);
+    //   spotTurn(0.75, left);
     // }
 
 
