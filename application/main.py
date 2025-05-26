@@ -9,8 +9,25 @@ import glob
 # Serial (PySerial) Setup
 # ---------------------------
 ports_to_try = [
+    '/dev/ttyUSB0',
+    '/dev/ttyUSB1',
+    '/dev/ttyUSB2',
+    '/dev/ttyUSB3',
+    '/dev/tty',
     '/dev/tty.usbmodem*',
-    '/dev/tty.usbserial*'
+    '/dev/tty.usbserial*',  # Added missing comma here
+    '/dev/ttyACM0',
+    '/dev/ttyACM1',
+    '/dev/ttyACM2',
+    '/dev/ttyACM3',
+    '/dev/ttyAMA0',
+    '/dev/ttyAMA1',
+    '/dev/ttyAMA2',
+    '/dev/ttyAMA3',
+    '/dev/ttyS0',
+    '/dev/ttyS1',
+    '/dev/ttyS2',
+    '/dev/ttyS3',
 ]
 ser = None
 for port_pattern in ports_to_try:
@@ -28,12 +45,18 @@ def send_serial_command(command: str):
     if ser and command != last_command:
         try:
             ser.write(command.encode())
+            ser.flush()  # Ensure data is sent immediately
             last_command = command
             print("Sent to Arduino: ", command)
         except Exception as e:
-            print("Arduino did NOT receive: ", e)
+            print(f"Error sending to Arduino: {e}")
+            # Don't let serial errors stop the program
     else:
-        print("Serial port not available or command unchanged.")
+        if not ser:
+            print("Serial port not available.")
+        elif command == last_command:
+            # Skip sending duplicate commands
+            pass
 
 # ---------------------------
 # Load YOLO11n Model
@@ -61,6 +84,15 @@ def reset_accumulated_counts():
     detected_medical_objects = []  # Also reset the tracking of detected objects
 
 # ---------------------------
+# Cleanup function to prevent memory issues
+# ---------------------------
+def cleanup_detected_objects(max_objects=100):
+    global detected_medical_objects
+    if len(detected_medical_objects) > max_objects:
+        # Keep only the most recent detections
+        detected_medical_objects = detected_medical_objects[-max_objects:]
+
+# ---------------------------
 # Update Accumulated Counts
 # ---------------------------
 def update_accumulated_counts(detection_results, accumulated_counts, detected_boxes):
@@ -85,6 +117,9 @@ def update_accumulated_counts(detection_results, accumulated_counts, detected_bo
     
     # Update the list of detected objects
     detected_medical_objects.extend(new_detected_objects)
+    
+    # Clean up old detections periodically
+    cleanup_detected_objects(max_objects=100)
 
 # ---------------------------
 # Detection Functions
@@ -96,7 +131,7 @@ def detect_items(frame, item_classes):
     item_classes: A dictionary mapping class indices to item names.
     Returns a dictionary with counts for each item and the detected boxes.
     """
-    results = model.predict(frame, conf=0.85, imgsz=512)  # Adjust confidence threshold as needed
+    results = model.predict(frame, conf=0.835, imgsz=512)  # Adjust confidence threshold as needed
     item_counts = {item: 0 for item in item_classes.values()}
 
     detected_boxes = []  # Store processed bounding boxes to avoid duplicates
@@ -141,13 +176,15 @@ def calculate_iou(box1, box2):
 # Check for Arduino Input
 # ---------------------------
 def check_arduino_input():
-    if ser and ser.in_waiting > 0:
+    if ser:
         try:
-            input_data = ser.readline().decode('utf-8').strip()
-            print("Received from Arduino: ", input_data)
-            return input_data
+            if ser.in_waiting > 0:
+                input_data = ser.readline().decode('utf-8', errors='replace').strip()
+                print("Received from Arduino: ", input_data)
+                return input_data
         except Exception as e:
             print("Error reading from Arduino: ", e)
+            # Don't let serial errors stop the program
     return None
 
 # ---------------------------
