@@ -74,8 +74,6 @@ accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
 last_command = None
 # Track which objects have been detected to avoid counting them multiple times
 detected_medical_objects = []
-# Track the last time we sent medical updates to Arduino
-last_medical_update_time = 0
 
 # ---------------------------
 # Reset Accumulated Counts
@@ -207,7 +205,7 @@ def capture_frames(cap, frame_skip=4):
 
 # Thread for processing frames
 def process_frames(food_classes, medical_classes):
-    global accumulated_medical_counts, last_medical_update_time
+    global accumulated_medical_counts
     detection_mode = "food"
 
     while not stop_event.is_set():
@@ -242,12 +240,9 @@ def process_frames(food_classes, medical_classes):
                 update_accumulated_counts(medical_results, accumulated_medical_counts, medical_boxes)
                 print("Accumulated medical detection results: ", accumulated_medical_counts)
 
-                current_time = time.time()
-                # Send medical results via serial every 3 seconds
-                if current_time - last_medical_update_time >= 3:
-                    for item, count in accumulated_medical_counts.items():
-                        send_serial_command(f"medical_{item}:{count}")
-                    last_medical_update_time = current_time
+                # Send medical results via serial
+                for item, count in accumulated_medical_counts.items():
+                    send_serial_command(f"medical_{item}:{count}")
 
 # Main function
 if __name__ == '__main__':
