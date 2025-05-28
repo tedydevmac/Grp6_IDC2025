@@ -246,7 +246,7 @@ def process_frames(food_classes, medical_classes):
                 # Send medical results via serial every 3 seconds
                 if current_time - last_medical_update_time >= 3:
                     for item, count in accumulated_medical_counts.items():
-                        send_serial_command(f"medical_{item}:{count}")
+                        send_serial_command(f"medical_{item}:{count}\n")
                     last_medical_update_time = current_time
 
 # Main function
