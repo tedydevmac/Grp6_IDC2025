@@ -70,7 +70,7 @@ print("Model loaded.")
 # ---------------------------
 # Global Variables for Accumulated Counts
 # ---------------------------
-accumulated_medical_counts = {"napkin": 0, "bandage": 0, "syringe": 0}
+accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
 last_command = None
 # Track which objects have been detected to avoid counting them multiple times
 detected_medical_objects = []
@@ -82,7 +82,7 @@ last_medical_update_time = 0
 # ---------------------------
 def reset_accumulated_counts():
     global accumulated_medical_counts, detected_medical_objects
-    accumulated_medical_counts = {"napkin": 0, "bandage": 0, "syringe": 0}
+    accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
     detected_medical_objects = []  # Also reset the tracking of detected objects
 
 # ---------------------------
@@ -109,7 +109,7 @@ def update_accumulated_counts(detection_results, accumulated_counts, detected_bo
                 # Check if this object has been detected before
                 is_new_object = True
                 for old_box, old_item in detected_medical_objects:
-                    if old_item == item and calculate_iou(box, old_box) > 0.5:  # Higher IoU threshold for same object
+                    if old_item == item and calculate_iou(box, old_box) > 0.3:  # Higher IoU threshold for same object
                         is_new_object = False
                         break
                 
@@ -147,7 +147,7 @@ def detect_items(frame, item_classes):
                 box_coords = (x1, y1, x2, y2)
 
                 # Check for duplicate detections
-                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.3 for existing_box, _ in detected_boxes)
+                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.15 for existing_box, _ in detected_boxes)
 
                 if not is_duplicate:
                     item_name = item_classes[cls]
