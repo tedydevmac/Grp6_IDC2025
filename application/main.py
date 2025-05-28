@@ -109,7 +109,7 @@ def update_accumulated_counts(detection_results, accumulated_counts, detected_bo
                 # Check if this object has been detected before
                 is_new_object = True
                 for old_box, old_item in detected_medical_objects:
-                    if old_item == item and calculate_iou(box, old_box) > 0.25:  # Higher IoU threshold for same object
+                    if old_item == item and calculate_iou(box, old_box) > 0.05:  # Higher IoU threshold for same object
                         is_new_object = False
                         break
                 
