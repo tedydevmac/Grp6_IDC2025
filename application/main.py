@@ -70,7 +70,7 @@ print("Model loaded.")
 # ---------------------------
 # Global Variables for Accumulated Counts
 # ---------------------------
-accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
+accumulated_medical_counts = {"napkin": 0, "bandage": 0, "syringe": 0}
 last_command = None
 # Track which objects have been detected to avoid counting them multiple times
 detected_medical_objects = []
@@ -82,7 +82,7 @@ last_medical_update_time = 0
 # ---------------------------
 def reset_accumulated_counts():
     global accumulated_medical_counts, detected_medical_objects
-    accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
+    accumulated_medical_counts = {"napkin": 0, "bandage": 0, "syringe": 0}
     detected_medical_objects = []  # Also reset the tracking of detected objects
 
 # ---------------------------
