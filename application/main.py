@@ -147,7 +147,7 @@ def detect_items(frame, item_classes):
                 box_coords = (x1, y1, x2, y2)
 
                 # Check for duplicate detections
-                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.5 for existing_box, _ in detected_boxes)
+                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.3 for existing_box, _ in detected_boxes)
 
                 if not is_duplicate:
                     item_name = item_classes[cls]
