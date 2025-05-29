@@ -61,7 +61,7 @@ def send_serial_command(command: str):
 # ---------------------------
 # Load YOLO11n Model
 # ---------------------------
-model_path = "/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best6_saved_model_512_55epochs/best_full_integer_quant.tflite"
+model_path = "/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best7_saved_model_512_60epochs/best_full_integer_quant.tflite"
 
 print("Loading model...")
 model = YOLO(model_path, task="detect")
@@ -192,7 +192,7 @@ def check_arduino_input():
 # ---------------------------
 # Initialize a thread-safe deque for frames
 # ---------------------------
-frame_queue = deque(maxlen=4)
+frame_queue = deque(maxlen=2)
 stop_event = threading.Event()
 
 # Thread for capturing frames with frame skipping
