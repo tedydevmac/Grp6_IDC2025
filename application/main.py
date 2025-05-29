@@ -109,9 +109,13 @@ def update_accumulated_counts(detection_results, accumulated_counts, detected_bo
                 # Check if this object has been detected before
                 is_new_object = True
                 for old_box, old_item in detected_medical_objects:
-                    if old_item == item and calculate_iou(box, old_box) > 0.2:  # Higher IoU threshold for same object
-                        is_new_object = False
-                        break
+                    if old_item == item:
+                        # Use both IoU and center distance for better accuracy
+                        iou = calculate_iou(box, old_box)
+                        center_dist = calculate_center_distance(box, old_box)
+                        if iou > 0.15 and center_dist < 50:  # Lowered IoU threshold and added distance check
+                            is_new_object = False
+                            break
                 
                 if is_new_object:
                     new_detected_objects.append((box, item))
@@ -146,8 +150,10 @@ def detect_items(frame, item_classes):
                 x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
                 box_coords = (x1, y1, x2, y2)
 
-                # Check for duplicate detections
-                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.2 for existing_box, _ in detected_boxes)
+                # Check for duplicate detections using both IoU and center distance
+                is_duplicate = any((calculate_iou(box_coords, existing_box) > 0.15 and 
+                                  calculate_center_distance(box_coords, existing_box) < 30) 
+                                  for existing_box, _ in detected_boxes)
 
                 if not is_duplicate:
                     item_name = item_classes[cls]
@@ -173,6 +179,22 @@ def calculate_iou(box1, box2):
     union = box1_area + box2_area - intersection
 
     return intersection / union if union > 0 else 0
+
+def calculate_center_distance(box1, box2):
+    """
+    Calculate Euclidean distance between centers of two bounding boxes.
+    box1, box2: Tuples of (x1, y1, x2, y2).
+    Returns distance between centers.
+    """
+    # Calculate centers
+    center1_x = (box1[0] + box1[2]) / 2
+    center1_y = (box1[1] + box1[3]) / 2
+    center2_x = (box2[0] + box2[2]) / 2
+    center2_y = (box2[1] + box2[3]) / 2
+    
+    # Calculate Euclidean distance
+    distance = ((center1_x - center2_x)**2 + (center1_y - center2_y)**2)**0.5
+    return distance
 
 # ---------------------------
 # Check for Arduino Input
@@ -229,17 +251,18 @@ def process_frames(food_classes, medical_classes):
         # Perform detection based on the current mode
         if detection_mode and frame_queue:
             frame = frame_queue.popleft()
+            detected_boxes = []  # Initialize for visualization
 
             if detection_mode == "food":
-                food_results, _ = detect_items(frame, food_classes)
+                food_results, detected_boxes = detect_items(frame, food_classes)
                 for item, count in food_results.items():
                     if count > 0:  # If any food item is detected
                         send_serial_command(f"food_{item}")
                         print(f"Detected and sent food item: {item}")
 
             elif detection_mode == "medical":
-                medical_results, medical_boxes = detect_items(frame, medical_classes)
-                update_accumulated_counts(medical_results, accumulated_medical_counts, medical_boxes)
+                medical_results, detected_boxes = detect_items(frame, medical_classes)
+                update_accumulated_counts(medical_results, accumulated_medical_counts, detected_boxes)
                 print("Accumulated medical detection results: ", accumulated_medical_counts)
 
                 current_time = time.time()
@@ -248,6 +271,47 @@ def process_frames(food_classes, medical_classes):
                     for item, count in accumulated_medical_counts.items():
                         send_serial_command(f"medical_{item}:{count}\n")
                     last_medical_update_time = current_time
+
+            # Visualization
+            vis_frame = visualize_detections(frame, detected_boxes, detection_mode, 
+                                           accumulated_medical_counts if detection_mode == "medical" else None)
+            cv2.imshow("Object Detection", vis_frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                stop_event.set()
+                break
+
+    cv2.destroyAllWindows()
+
+# ---------------------------
+# Visualization Functions
+# ---------------------------
+def visualize_detections(frame, detected_boxes, mode, accumulated_counts=None):
+    """Draw bounding boxes and labels on frame for visualization"""
+    vis_frame = frame.copy()
+    
+    # Draw bounding boxes and labels
+    for box, item_name in detected_boxes:
+        x1, y1, x2, y2 = [int(coord) for coord in box]
+        cv2.rectangle(vis_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        
+        # Add label background
+        label = item_name
+        label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
+        cv2.rectangle(vis_frame, (x1, y1-25), (x1 + label_size[0], y1), (0, 255, 0), -1)
+        cv2.putText(vis_frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+    
+    # Add mode indicator
+    cv2.putText(vis_frame, f"Mode: {mode.upper()}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+    
+    # Add accumulated counts for medical mode
+    if mode == "medical" and accumulated_counts:
+        y_offset = 60
+        for item, count in accumulated_counts.items():
+            text = f"{item}: {count}"
+            cv2.putText(vis_frame, text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            y_offset += 25
+    
+    return vis_frame
 
 # Main function
 if __name__ == '__main__':
