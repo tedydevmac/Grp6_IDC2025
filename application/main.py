@@ -102,25 +102,14 @@ def update_accumulated_counts(detection_results, accumulated_counts, detected_bo
     
     # Compare new detections with previously detected objects
     new_detected_objects = []
-    
-    # Create a list of boxes for each item type to handle multiple instances correctly
-    boxes_by_item = {}
-    for box, item_name in detected_boxes:
-        if item_name not in boxes_by_item:
-            boxes_by_item[item_name] = []
-        boxes_by_item[item_name].append(box)
-    
-    # Process each detected item
     for item, count in detection_results.items():
-        if item in boxes_by_item:
-            item_boxes = boxes_by_item[item]
-            
-            # Check each box for this item type
-            for box in item_boxes:
+        for i in range(count):
+            box = next((b for b, item_name in detected_boxes if item_name == item), None)
+            if box:
                 # Check if this object has been detected before
                 is_new_object = True
                 for old_box, old_item in detected_medical_objects:
-                    if old_item == item and calculate_iou(box, old_box) > 0.3:  # Increased IoU threshold
+                    if old_item == item and calculate_iou(box, old_box) > 0.05:  # Higher IoU threshold for same object
                         is_new_object = False
                         break
                 
@@ -144,7 +133,7 @@ def detect_items(frame, item_classes):
     item_classes: A dictionary mapping class indices to item names.
     Returns a dictionary with counts for each item and the detected boxes.
     """
-    results = model.predict(frame, conf=0.7, imgsz=512)  # Lowered confidence threshold for better detection
+    results = model.predict(frame, conf=0.75, imgsz=512)  # Adjust confidence threshold as needed
     item_counts = {item: 0 for item in item_classes.values()}
 
     detected_boxes = []  # Store processed bounding boxes to avoid duplicates
@@ -157,8 +146,8 @@ def detect_items(frame, item_classes):
                 x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
                 box_coords = (x1, y1, x2, y2)
 
-                # Check for duplicate detections with higher IoU threshold
-                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.3 for existing_box, _ in detected_boxes)
+                # Check for duplicate detections
+                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.05 for existing_box, _ in detected_boxes)
 
                 if not is_duplicate:
                     item_name = item_classes[cls]
@@ -206,14 +195,14 @@ def check_arduino_input():
 frame_queue = deque(maxlen=4)
 stop_event = threading.Event()
 
-# Thread for capturing frames with reduced frame skipping
-def capture_frames(cap, frame_skip=2):  # Reduced frame skipping for better detection
+# Thread for capturing frames with frame skipping
+def capture_frames(cap, frame_skip=4):
     frame_count = 0
     while not stop_event.is_set():
         ret, frame = cap.read()
         if ret:
             frame_count += 1
-            if frame_count % frame_skip == 0:  # Skip fewer frames
+            if frame_count % frame_skip == 0:  # Skip frames
                 frame_queue.append(frame)
 
 # Thread for processing frames
@@ -266,8 +255,8 @@ if __name__ == '__main__':
     cv2.setNumThreads(2)  # Use 2 threads for OpenCV
 
     cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # Increased resolution for better detection
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not cap.isOpened():
@@ -280,7 +269,7 @@ if __name__ == '__main__':
     medical_classes = {3: "napkin", 5: "syringe", 0: "bandage"}
 
     # Start threads
-    capture_thread = threading.Thread(target=capture_frames, args=(cap, 2))  # Reduced frame skipping
+    capture_thread = threading.Thread(target=capture_frames, args=(cap, 4))  # Skip every 2nd frame
     process_thread = threading.Thread(target=process_frames, args=(food_classes, medical_classes))
     capture_thread.start()
     process_thread.start()
