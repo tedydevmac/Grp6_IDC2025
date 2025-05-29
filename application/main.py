@@ -253,7 +253,7 @@ def process_frames(food_classes, medical_classes):
                         print(f"Detected and sent food item: {item}")
 
             elif detection_mode == "medical":
-                medical_results, medical_boxes = detect_items(frame, medical_classes, conf_threshold=0.825)  # Higher confidence for medical
+                medical_results, medical_boxes = detect_items(frame, medical_classes, conf_threshold=0.815)  # Higher confidence for medical
                 update_accumulated_counts(medical_results, accumulated_medical_counts, medical_boxes)
                 print("Accumulated medical detection results: ", accumulated_medical_counts)
 
