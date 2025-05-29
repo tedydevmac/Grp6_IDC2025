@@ -61,7 +61,7 @@ def send_serial_command(command: str):
 # ---------------------------
 # Load YOLO11n Model
 # ---------------------------
-model_path = "/Users/tedgoh/Grp6_IDC2025/ml/models/best7_saved_model_512_60epochs/best_full_integer_quant.tflite"
+model_path = "/home/sst/IDC25G6/Grp6_IDC2025/ml/models/best7_saved_model_512_60epochs/best_full_integer_quant.tflite"
 
 print("Loading model...")
 model = YOLO(model_path, task="detect")
