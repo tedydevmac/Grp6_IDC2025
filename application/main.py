@@ -109,7 +109,7 @@ def update_accumulated_counts(detection_results, accumulated_counts, detected_bo
                 # Check if this object has been detected before
                 is_new_object = True
                 for old_box, old_item in detected_medical_objects:
-                    if old_item == item and calculate_iou(box, old_box) > 0.3:  # Higher IoU threshold for same object
+                    if old_item == item and calculate_iou(box, old_box) > 0.2 and calculate_center_distance(box, old_box) < 50:  # Lowered IoU and added distance check
                         is_new_object = False
                         break
                 
@@ -126,14 +126,15 @@ def update_accumulated_counts(detection_results, accumulated_counts, detected_bo
 # ---------------------------
 # Detection Functions
 # ---------------------------
-def detect_items(frame, item_classes):
+def detect_items(frame, item_classes, conf_threshold=0.825):
     """
     Detect and count items in the frame using model.
     Filters out duplicate detections of the same object.
     item_classes: A dictionary mapping class indices to item names.
+    conf_threshold: Confidence threshold for object detection.
     Returns a dictionary with counts for each item and the detected boxes.
     """
-    results = model.predict(frame, conf=0.825, imgsz=512)  # Adjust confidence threshold as needed
+    results = model.predict(frame, conf=conf_threshold, imgsz=512)  # Adjustable confidence threshold
     item_counts = {item: 0 for item in item_classes.values()}
 
     detected_boxes = []  # Store processed bounding boxes to avoid duplicates
@@ -146,8 +147,10 @@ def detect_items(frame, item_classes):
                 x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
                 box_coords = (x1, y1, x2, y2)
 
-                # Check for duplicate detections
-                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.3 for existing_box, _ in detected_boxes)
+                # Check for duplicate detections using both IoU and center distance
+                is_duplicate = any((calculate_iou(box_coords, existing_box) > 0.15 and 
+                                  calculate_center_distance(box_coords, existing_box) < 30) 
+                                  for existing_box, _ in detected_boxes)
 
                 if not is_duplicate:
                     item_name = item_classes[cls]
@@ -155,6 +158,18 @@ def detect_items(frame, item_classes):
                     item_counts[item_name] += 1
 
     return item_counts, detected_boxes
+
+def calculate_box_center(box):
+    """Calculate the center point of a bounding box"""
+    x_center = (box[0] + box[2]) / 2
+    y_center = (box[1] + box[3]) / 2
+    return (x_center, y_center)
+
+def calculate_center_distance(box1, box2):
+    """Calculate Euclidean distance between centers of two boxes"""
+    center1 = calculate_box_center(box1)
+    center2 = calculate_box_center(box2)
+    return ((center1[0] - center2[0])**2 + (center1[1] - center2[1])**2)**0.5
 
 def calculate_iou(box1, box2):
     """
@@ -238,7 +253,7 @@ def process_frames(food_classes, medical_classes):
                         print(f"Detected and sent food item: {item}")
 
             elif detection_mode == "medical":
-                medical_results, medical_boxes = detect_items(frame, medical_classes)
+                medical_results, medical_boxes = detect_items(frame, medical_classes, conf_threshold=0.85)  # Higher confidence for medical
                 update_accumulated_counts(medical_results, accumulated_medical_counts, medical_boxes)
                 print("Accumulated medical detection results: ", accumulated_medical_counts)
 
