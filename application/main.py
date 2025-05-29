@@ -133,7 +133,7 @@ def detect_items(frame, item_classes):
     item_classes: A dictionary mapping class indices to item names.
     Returns a dictionary with counts for each item and the detected boxes.
     """
-    results = model.predict(frame, conf=0.75, imgsz=512)  # Adjust confidence threshold as needed
+    results = model.predict(frame, conf=0.85, imgsz=512)  # Adjust confidence threshold as needed
     item_counts = {item: 0 for item in item_classes.values()}
 
     detected_boxes = []  # Store processed bounding boxes to avoid duplicates
@@ -192,7 +192,7 @@ def check_arduino_input():
 # ---------------------------
 # Initialize a thread-safe deque for frames
 # ---------------------------
-frame_queue = deque(maxlen=4)
+frame_queue = deque(maxlen=2)
 stop_event = threading.Event()
 
 # Thread for capturing frames with frame skipping
