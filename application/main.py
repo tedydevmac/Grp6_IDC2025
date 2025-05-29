@@ -192,7 +192,7 @@ def check_arduino_input():
 # ---------------------------
 # Initialize a thread-safe deque for frames
 # ---------------------------
-frame_queue = deque(maxlen=2)
+frame_queue = deque(maxlen=4)
 stop_event = threading.Event()
 
 # Thread for capturing frames with frame skipping
