@@ -246,11 +246,16 @@ def process_frames(food_classes, medical_classes):
             frame = frame_queue.popleft()
 
             if detection_mode == "food":
-                food_results, _ = detect_items(frame, food_classes)
+                food_results, food_boxes = detect_items(frame, food_classes)
                 for item, count in food_results.items():
                     if count > 0:  # If any food item is detected
                         send_serial_command(f"food_{item}")
                         print(f"Detected and sent food item: {item}")
+                
+                # Display camera feed with detections
+                vis_frame = visualize_detections(frame, food_boxes)
+                cv2.putText(vis_frame, f"Mode: FOOD", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                cv2.imshow('Object Detection', vis_frame)
 
             elif detection_mode == "medical":
                 medical_results, medical_boxes = detect_items(frame, medical_classes, conf_threshold=0.7)  # Higher confidence for medical
@@ -263,6 +268,36 @@ def process_frames(food_classes, medical_classes):
                     for item, count in accumulated_medical_counts.items():
                         send_serial_command(f"medical_{item}:{count}\n")
                     last_medical_update_time = current_time
+                
+                # Display camera feed with detections and counts
+                vis_frame = visualize_detections(frame, medical_boxes)
+                cv2.putText(vis_frame, f"Mode: MEDICAL", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                y_offset = 60
+                for item, count in accumulated_medical_counts.items():
+                    cv2.putText(vis_frame, f"{item}: {count}", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                    y_offset += 30
+                cv2.imshow('Object Detection', vis_frame)
+        
+        # Handle window events
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            stop_event.set()
+            break
+
+# ---------------------------
+# Visualization Functions
+# ---------------------------
+def visualize_detections(frame, detected_boxes):
+    """Draw bounding boxes and labels on frame for visualization"""
+    vis_frame = frame.copy()
+    for box, item_name in detected_boxes:
+        x1, y1, x2, y2 = [int(coord) for coord in box]
+        # Draw bounding box
+        cv2.rectangle(vis_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        # Draw label with background
+        label_size = cv2.getTextSize(item_name, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+        cv2.rectangle(vis_frame, (x1, y1 - label_size[1] - 10), (x1 + label_size[0], y1), (0, 255, 0), -1)
+        cv2.putText(vis_frame, item_name, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+    return vis_frame
 
 # Main function
 if __name__ == '__main__':
@@ -294,3 +329,4 @@ if __name__ == '__main__':
     process_thread.join()
 
     cap.release()
+    cv2.destroyAllWindows()
