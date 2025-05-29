@@ -109,7 +109,7 @@ def update_accumulated_counts(detection_results, accumulated_counts, detected_bo
                 # Check if this object has been detected before
                 is_new_object = True
                 for old_box, old_item in detected_medical_objects:
-                    if old_item == item and calculate_iou(box, old_box) > 0.05:  # Higher IoU threshold for same object
+                    if old_item == item and calculate_iou(box, old_box) > 0.5:  # Higher IoU threshold for same object
                         is_new_object = False
                         break
                 
@@ -133,7 +133,7 @@ def detect_items(frame, item_classes):
     item_classes: A dictionary mapping class indices to item names.
     Returns a dictionary with counts for each item and the detected boxes.
     """
-    results = model.predict(frame, conf=0.75, imgsz=512)  # Adjust confidence threshold as needed
+    results = model.predict(frame, conf=0.775, imgsz=512)  # Adjust confidence threshold as needed
     item_counts = {item: 0 for item in item_classes.values()}
 
     detected_boxes = []  # Store processed bounding boxes to avoid duplicates
@@ -147,7 +147,7 @@ def detect_items(frame, item_classes):
                 box_coords = (x1, y1, x2, y2)
 
                 # Check for duplicate detections
-                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.05 for existing_box, _ in detected_boxes)
+                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.5 for existing_box, _ in detected_boxes)
 
                 if not is_duplicate:
                     item_name = item_classes[cls]
