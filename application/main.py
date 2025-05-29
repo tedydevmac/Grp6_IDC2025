@@ -144,7 +144,7 @@ def detect_items(frame, item_classes):
     item_classes: A dictionary mapping class indices to item names.
     Returns a dictionary with counts for each item and the detected boxes.
     """
-    results = model.predict(frame, conf=0.6, imgsz=512)  # Lowered confidence threshold for better detection
+    results = model.predict(frame, conf=0.8, imgsz=512)  # Lowered confidence threshold for better detection
     item_counts = {item: 0 for item in item_classes.values()}
 
     detected_boxes = []  # Store processed bounding boxes to avoid duplicates
