@@ -9,8 +9,25 @@ import glob
 # Serial (PySerial) Setup
 # ---------------------------
 ports_to_try = [
+    '/dev/ttyUSB0',
+    '/dev/ttyUSB1',
+    '/dev/ttyUSB2',
+    '/dev/ttyUSB3',
+    '/dev/tty',
     '/dev/tty.usbmodem*',
-    '/dev/tty.usbserial*'
+    '/dev/tty.usbserial*',  
+    '/dev/ttyACM0',
+    '/dev/ttyACM1',
+    '/dev/ttyACM2',
+    '/dev/ttyACM3',
+    '/dev/ttyAMA0',
+    '/dev/ttyAMA1',
+    '/dev/ttyAMA2',
+    '/dev/ttyAMA3',
+    '/dev/ttyS0',
+    '/dev/ttyS1',
+    '/dev/ttyS2',
+    '/dev/ttyS3',
 ]
 ser = None
 for port_pattern in ports_to_try:
@@ -28,12 +45,18 @@ def send_serial_command(command: str):
     if ser and command != last_command:
         try:
             ser.write(command.encode())
+            ser.flush()  # Ensure data is sent immediately
             last_command = command
             print("Sent to Arduino: ", command)
         except Exception as e:
-            print("Arduino did NOT receive: ", e)
+            print(f"Error sending to Arduino: {e}")
+            # Don't let serial errors stop the program
     else:
-        print("Serial port not available or command unchanged.")
+        if not ser:
+            print("Serial port not available.")
+        elif command == last_command:
+            # Skip sending duplicate commands
+            pass
 
 # ---------------------------
 # Load YOLO11n Model
@@ -51,6 +74,8 @@ accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
 last_command = None
 # Track which objects have been detected to avoid counting them multiple times
 detected_medical_objects = []
+# Track the last time we sent medical updates to Arduino
+last_medical_update_time = 0
 
 # ---------------------------
 # Reset Accumulated Counts
@@ -59,6 +84,15 @@ def reset_accumulated_counts():
     global accumulated_medical_counts, detected_medical_objects
     accumulated_medical_counts = {"napkin": 0, "syringe": 0, "bandage": 0}
     detected_medical_objects = []  # Also reset the tracking of detected objects
+
+# ---------------------------
+# Cleanup function to prevent memory issues
+# ---------------------------
+def cleanup_detected_objects(max_objects=100):
+    global detected_medical_objects
+    if len(detected_medical_objects) > max_objects:
+        # Keep only the most recent detections
+        detected_medical_objects = detected_medical_objects[-max_objects:]
 
 # ---------------------------
 # Update Accumulated Counts
@@ -75,7 +109,7 @@ def update_accumulated_counts(detection_results, accumulated_counts, detected_bo
                 # Check if this object has been detected before
                 is_new_object = True
                 for old_box, old_item in detected_medical_objects:
-                    if old_item == item and calculate_iou(box, old_box) > 0.1:  # Higher IoU threshold for same object
+                    if old_item == item and calculate_iou(box, old_box) > 0.05:  # Higher IoU threshold for same object
                         is_new_object = False
                         break
                 
@@ -85,6 +119,9 @@ def update_accumulated_counts(detection_results, accumulated_counts, detected_bo
     
     # Update the list of detected objects
     detected_medical_objects.extend(new_detected_objects)
+    
+    # Clean up old detections periodically
+    cleanup_detected_objects(max_objects=100)
 
 # ---------------------------
 # Detection Functions
@@ -96,7 +133,7 @@ def detect_items(frame, item_classes):
     item_classes: A dictionary mapping class indices to item names.
     Returns a dictionary with counts for each item and the detected boxes.
     """
-    results = model.predict(frame, conf=0.9, imgsz=512)  # Adjust confidence threshold as needed
+    results = model.predict(frame, conf=0.75, imgsz=512)  # Adjust confidence threshold as needed
     item_counts = {item: 0 for item in item_classes.values()}
 
     detected_boxes = []  # Store processed bounding boxes to avoid duplicates
@@ -110,7 +147,7 @@ def detect_items(frame, item_classes):
                 box_coords = (x1, y1, x2, y2)
 
                 # Check for duplicate detections
-                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.5 for existing_box, _ in detected_boxes)
+                is_duplicate = any(calculate_iou(box_coords, existing_box) > 0.05 for existing_box, _ in detected_boxes)
 
                 if not is_duplicate:
                     item_name = item_classes[cls]
@@ -141,19 +178,21 @@ def calculate_iou(box1, box2):
 # Check for Arduino Input
 # ---------------------------
 def check_arduino_input():
-    if ser and ser.in_waiting > 0:
+    if ser:
         try:
-            input_data = ser.readline().decode('utf-8').strip()
-            print("Received from Arduino: ", input_data)
-            return input_data
+            if ser.in_waiting > 0:
+                input_data = ser.readline().decode('utf-8', errors='replace').strip()
+                print("Received from Arduino: ", input_data)
+                return input_data
         except Exception as e:
             print("Error reading from Arduino: ", e)
+            # Don't let serial errors stop the program
     return None
 
 # ---------------------------
 # Initialize a thread-safe deque for frames
 # ---------------------------
-frame_queue = deque(maxlen=2)
+frame_queue = deque(maxlen=4)
 stop_event = threading.Event()
 
 # Thread for capturing frames with frame skipping
@@ -168,7 +207,7 @@ def capture_frames(cap, frame_skip=4):
 
 # Thread for processing frames
 def process_frames(food_classes, medical_classes):
-    global accumulated_medical_counts
+    global accumulated_medical_counts, last_medical_update_time
     detection_mode = "food"
 
     while not stop_event.is_set():
@@ -203,9 +242,12 @@ def process_frames(food_classes, medical_classes):
                 update_accumulated_counts(medical_results, accumulated_medical_counts, medical_boxes)
                 print("Accumulated medical detection results: ", accumulated_medical_counts)
 
-                # Send medical results via serial
-                for item, count in accumulated_medical_counts.items():
-                    send_serial_command(f"medical_{item}:{count}")
+                current_time = time.time()
+                # Send medical results via serial every 3 seconds
+                if current_time - last_medical_update_time >= 3:
+                    for item, count in accumulated_medical_counts.items():
+                        send_serial_command(f"medical_{item}:{count}\n")
+                    last_medical_update_time = current_time
 
 # Main function
 if __name__ == '__main__':
